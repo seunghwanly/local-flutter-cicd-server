@@ -1,0 +1,4 @@
+.android.env
+.env
+.ios.env
+__pycache__/

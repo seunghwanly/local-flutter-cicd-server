@@ -1,0 +1,19 @@
+# ✅ Essential
+.git
+.venv
+__pycache__/
+
+# 💡 Unnecessary
+*.pyc
+*.pyo
+*.pyd
+*.log
+*.tmp
+.DS_Store
+.env
+.android.env
+.ios.env
+.idea/
+.vscode/
+build/
+.dart_tool/

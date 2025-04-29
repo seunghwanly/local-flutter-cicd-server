@@ -1,0 +1,31 @@
+services:
+  flutter-local-cicd:
+    container_name: flutter-local-cicd
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      FLUTTER_VERSION: ""
+      REPO_URL: ""
+      DEV_BRANCH_NAME: ""
+      DEV_LOCAL_DIR: ""
+      PROD_BRANCH_NAME: ""
+      PROD_LOCAL_DIR: ""
+      DEV_FASTLANE_LANE: ""
+      PROD_FASTLANE_LANE: ""
+      GITHUB_WEBHOOK_SECRET: ""
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./.android.env:/workspace/.android.env
+      - ./.ios.env:/workspace/.ios.env
+    restart: unless-stopped
+
+  # ngrok:
+  #   image: wernight/ngrok
+  #   environment:
+  #     NGROK_AUTHTOKEN: your-ngrok-token
+  #     NGROK_PORT: flutter-local-cicd:8000
+  #   ports:
+  #     - "4040:4040"  # ngrok dashboard
+  #     - "80:80"      # http tunnel (optional)
