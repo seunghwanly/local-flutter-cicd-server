@@ -8,8 +8,7 @@ PROD_BRANCH_NAME="${PROD_BRANCH_NAME:-(알 수 없음)}"
 
 echo "🚀 iOS 배포 시작 (prod / BRANCH: $PROD_BRANCH_NAME)"
 
-cd "$PROD_LOCAL_DIR/ios"
-flutter pub get
-fastlane "$PROD_FASTLANE_LANE"
+cd $PROD_LOCAL_DIR/ios
+fastlane $PROD_FASTLANE_LANE
 
 echo "✅ iOS 빌드 완료 (prod)"

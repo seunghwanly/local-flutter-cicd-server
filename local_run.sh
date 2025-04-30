@@ -10,7 +10,9 @@ pip install --upgrade pip
 pip install -r requirements.txt
 
 # .env 파일을 읽어와서 모든 변수를 환경변수 설정
-export $(grep -v '^#' .env | xargs -0)
+set -a
+[ -f .env ] && . .env
+set +a
 
 echo "🚀 FastAPI 서버 실행 중..."
 uvicorn main:app --reload --host 0.0.0.0 --port 8000

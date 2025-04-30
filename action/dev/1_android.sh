@@ -8,8 +8,7 @@ DEV_BRANCH_NAME="${DEV_BRANCH_NAME:-(알 수 없음)}"
 
 echo "🚀 Android 배포 시작 (BRANCH: $DEV_BRANCH_NAME)"
 
-cd "$DEV_LOCAL_DIR/android"
-flutter pub get
-fastlane "$DEV_FASTLANE_LANE"
+cd $DEV_LOCAL_DIR/android
+fastlane $DEV_FASTLANE_LANE
 
 echo "✅ Android 빌드 완료"
