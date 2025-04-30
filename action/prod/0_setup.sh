@@ -2,7 +2,7 @@
 set -e
 
 # 필수 환경변수 확인
-PROD_REPO_URL="${PROD_REPO_URL:?PROD_REPO_URL 환경변수가 필요합니다}"
+REPO_URL="${REPO_URL:?REPO_URL 환경변수가 필요합니다}"
 PROD_BRANCH_NAME="${PROD_BRANCH_NAME:?PROD_BRANCH_NAME 환경변수가 필요합니다}"
 PROD_LOCAL_DIR="${PROD_LOCAL_DIR:?PROD_LOCAL_DIR 환경변수가 필요합니다}"
 
@@ -11,7 +11,7 @@ echo "🚀 Deploying branch: $PROD_BRANCH_NAME (prod)"
 # Git clone (최초 1회)
 if [ ! -d "$PROD_LOCAL_DIR" ]; then
     echo "📦 Cloning repo..."
-    git clone "$PROD_REPO_URL" "$PROD_LOCAL_DIR"
+    git clone "$REPO_URL" "$PROD_LOCAL_DIR"
 fi
 
 # 해당 디렉토리로 이동
