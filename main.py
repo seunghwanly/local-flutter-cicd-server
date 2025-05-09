@@ -50,7 +50,7 @@ async def handle_webhook(
         if (payload.get("pull_request", {}).get("base", {}).get("ref") == "develop" and
                 payload.get("pull_request", {}).get("head", {}).get("ref").startswith("release-dev-v")):
             print("✅ PR merged to develop! Running CI/CD...")
-            threading.Thread(target=build_pipeline, args=("dev",)).start()
+            threading.Thread(target=build_pipeline, args=("dev", "all")).start()
 
     elif (
         x_github_event == "create" and
@@ -61,7 +61,7 @@ async def handle_webhook(
 
         if re.match(r"\d+\.\d+\.\d+", tag_name):
             print(f"✅ Valid tag format: {tag_name}")
-            threading.Thread(target=build_pipeline, args=("prod",)).start()
+            threading.Thread(target=build_pipeline, args=("prod", "all")).start()
 
     return {"status": "ok"}
 
@@ -70,14 +70,20 @@ async def handle_webhook(
 async def manual_build(request: Request):
     body = await request.json()
     flavor = body.get("flavor", "dev")
-    threading.Thread(target=build_pipeline, args=(flavor,)).start()
+    platform = body.get("platform", "all")
+    threading.Thread(target=build_pipeline, args=(flavor, platform)).start()
     return {"status": "manual trigger ok"}
 
 
-def build_pipeline(flavor: str):
+def build_pipeline(flavor: str, platform: str):
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     print(f"🛠️ [{flavor}] Build started at {now}")
 
     subprocess.run(["bash", f"action/{flavor}/0_setup.sh"], check=True)
-    subprocess.Popen(["bash", f"action/{flavor}/1_android.sh"])
-    subprocess.Popen(["bash", f"action/{flavor}/1_ios.sh"])
+    if platform == "all":
+        subprocess.Popen(["bash", f"action/{flavor}/1_android.sh"])
+        subprocess.Popen(["bash", f"action/{flavor}/1_ios.sh"])
+    elif platform == "android":
+        subprocess.Popen(["bash", f"action/{flavor}/1_android.sh"])
+    elif platform == "ios":
+        subprocess.Popen(["bash", f"action/{flavor}/1_ios.sh"])
