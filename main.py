@@ -71,19 +71,38 @@ async def manual_build(request: Request):
     body = await request.json()
     flavor = body.get("flavor", "dev")
     platform = body.get("platform", "all")
-    threading.Thread(target=build_pipeline, args=(flavor, platform)).start()
+    build_name = body.get("build_name", None)
+    build_number = body.get("build_number", None)
+    threading.Thread(target=build_pipeline, args=(flavor, platform, build_name, build_number)).start()
     return {"status": "manual trigger ok"}
 
 
-def build_pipeline(flavor: str, platform: str):
+def build_pipeline(
+    flavor: str,
+    platform: str,
+    build_name: str,
+    build_number: str,
+):
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     print(f"🛠️ [{flavor}] Build started at {now}")
 
     subprocess.run(["bash", f"action/{flavor}/0_setup.sh"], check=True)
+
+    android_build_args = ["bash", f"action/{flavor}/1_android.sh"]
+    ios_build_args = ["bash", f"action/{flavor}/1_ios.sh"]
+
+    if build_name:
+        android_build_args.append(f"-n {build_name}")
+        ios_build_args.append(f"-n {build_name}")
+
+    if build_number:
+        android_build_args.append(f"-b {build_number}")
+        ios_build_args.append(f"-b {build_number}")
+
     if platform == "all":
-        subprocess.Popen(["bash", f"action/{flavor}/1_android.sh"])
-        subprocess.Popen(["bash", f"action/{flavor}/1_ios.sh"])
+        subprocess.Popen(android_build_args)
+        subprocess.Popen(ios_build_args)
     elif platform == "android":
-        subprocess.Popen(["bash", f"action/{flavor}/1_android.sh"])
+        subprocess.Popen(android_build_args)
     elif platform == "ios":
-        subprocess.Popen(["bash", f"action/{flavor}/1_ios.sh"])
+        subprocess.Popen(ios_build_args)
