@@ -21,6 +21,7 @@ cd "$DEV_LOCAL_DIR" || exit 1
 echo "🔄 Fetching and checking out branch..."
 git fetch origin
 git checkout "$DEV_BRANCH_NAME" || git checkout -b "$DEV_BRANCH_NAME" "origin/$DEV_BRANCH_NAME"
+git stash
 git pull origin "$DEV_BRANCH_NAME"
 
 # Flutter SDK가 이미 설정되어 있다고 가정
