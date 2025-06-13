@@ -10,6 +10,10 @@ echo "🚀 Android 배포 시작 (prod / BRANCH: $PROD_BRANCH_NAME)"
 
 cd $PROD_LOCAL_DIR/android
 
+# 기본값 설정
+BUILD_NAME=""
+BUILD_NUMBER=""
+
 while getopts n:b: opt; do
     case $opt in
     n)
@@ -26,6 +30,24 @@ while getopts n:b: opt; do
         ;;
     esac
 done
-fastlane $PROD_FASTLANE_LANE build_name:"$BUILD_NAME" build_number:"$BUILD_NUMBER"
+
+# fastlane 명령어 구성
+FASTLANE_CMD="fastlane $PROD_FASTLANE_LANE"
+
+# 파라미터 추가 (순서 보장)
+if [ ! -z "$BUILD_NAME" ] && [ ! -z "$BUILD_NUMBER" ]; then
+    # 둘 다 있는 경우
+    FASTLANE_CMD="$FASTLANE_CMD build_name:\"$BUILD_NAME\" build_number:\"$BUILD_NUMBER\""
+elif [ ! -z "$BUILD_NAME" ]; then
+    # build_name만 있는 경우
+    FASTLANE_CMD="$FASTLANE_CMD build_name:\"$BUILD_NAME\""
+elif [ ! -z "$BUILD_NUMBER" ]; then
+    # build_number만 있는 경우
+    FASTLANE_CMD="$FASTLANE_CMD build_number:\"$BUILD_NUMBER\""
+fi
+
+# fastlane 실행
+echo "🚀 Running: $FASTLANE_CMD"
+eval $FASTLANE_CMD
 
 echo "✅ Android 빌드 완료 (prod)"
