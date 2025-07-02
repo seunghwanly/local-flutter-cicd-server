@@ -74,6 +74,9 @@ async def get_build_status(build_id: str):
         "started_at": job['started_at'],
         "flavor": job['flavor'],
         "platform": job['platform'],
+        "branch_name": job.get('branch_name'),
+        "build_name": job.get('build_name'),
+        "build_number": job.get('build_number'),
         "processes": {
             "setup": {
                 "running": setup_running,
@@ -110,7 +113,10 @@ async def list_builds():
             "status": status,
             "started_at": job['started_at'],
             "flavor": job['flavor'],
-            "platform": job['platform']
+            "platform": job['platform'],
+            "branch_name": job.get('branch_name'),
+            "build_name": job.get('build_name'),
+            "build_number": job.get('build_number')
         })
     
     return {"builds": builds}
@@ -162,8 +168,9 @@ async def manual_build(request: Request):
     platform = body.get("platform", "all")
     build_name = body.get("build_name", None)
     build_number = body.get("build_number", None)
+    branch_name = body.get("branch_name", None)
     
-    build_id = start_build_pipeline(flavor, platform, build_name, build_number)
+    build_id = start_build_pipeline(flavor, platform, build_name, build_number, branch_name)
     return {"status": "manual trigger ok", "build_id": build_id}
 
 
@@ -172,6 +179,7 @@ def start_build_pipeline(
     platform: str,
     build_name: str = None,
     build_number: str = None,
+    branch_name: str = None,
 ) -> str:
     """Start a build pipeline and return build ID for tracking"""
     now = datetime.now()
@@ -186,13 +194,14 @@ def start_build_pipeline(
         "platform": platform,
         "build_name": build_name,
         "build_number": build_number,
+        "branch_name": branch_name,
         "logs": []
     }
     
     # Start build in background thread
     threading.Thread(
         target=build_pipeline_with_monitoring, 
-        args=(build_id, flavor, platform, build_name, build_number)
+        args=(build_id, flavor, platform, build_name, build_number, branch_name)
     ).start()
     
     return build_id
@@ -204,6 +213,7 @@ def build_pipeline_with_monitoring(
     platform: str,
     build_name: str,
     build_number: str,
+    branch_name: str,
 ):
     """Enhanced build pipeline with progress monitoring"""
     job = build_jobs[build_id]
@@ -217,13 +227,25 @@ def build_pipeline_with_monitoring(
         print(f"📦 [{build_id}] Running setup...")
         job['logs'].append("📦 Running setup...")
         
+        # Prepare environment for setup script
+        env = os.environ.copy()
+        if branch_name:
+            # Override the branch name environment variable based on flavor
+            if flavor == "dev":
+                env["DEV_BRANCH_NAME"] = branch_name
+            elif flavor == "prod":
+                env["PROD_BRANCH_NAME"] = branch_name
+            job['logs'].append(f"🌿 Using custom branch: {branch_name}")
+            print(f"🌿 [{build_id}] Using custom branch: {branch_name}")
+        
         setup_process = subprocess.Popen(
             ["bash", f"action/{flavor}/0_setup.sh"],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
             bufsize=1,
-            universal_newlines=True
+            universal_newlines=True,
+            env=env
         )
         job['setup_process'] = setup_process
         

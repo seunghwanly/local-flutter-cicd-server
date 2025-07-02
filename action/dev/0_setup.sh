@@ -20,9 +20,19 @@ cd "$DEV_LOCAL_DIR" || exit 1
 # 최신 상태로 만들기
 echo "🔄 Fetching and checking out branch..."
 git fetch origin
-git checkout "$DEV_BRANCH_NAME" || git checkout -b "$DEV_BRANCH_NAME" "origin/$DEV_BRANCH_NAME"
-git stash
-git pull origin "$DEV_BRANCH_NAME"
+
+# Check if branch exists remotely
+if git ls-remote --heads origin "$DEV_BRANCH_NAME" | grep -q "$DEV_BRANCH_NAME"; then
+    echo "✅ Branch $DEV_BRANCH_NAME exists remotely"
+    git checkout "$DEV_BRANCH_NAME" || git checkout -b "$DEV_BRANCH_NAME" "origin/$DEV_BRANCH_NAME"
+    git stash
+    git pull origin "$DEV_BRANCH_NAME"
+else
+    echo "❌ Error: Branch '$DEV_BRANCH_NAME' does not exist in the remote repository"
+    echo "Available branches:"
+    git branch -r | head -10
+    exit 1
+fi
 
 # Flutter SDK가 이미 설정되어 있다고 가정
 echo "🚧 Running flutter pub get ..."
