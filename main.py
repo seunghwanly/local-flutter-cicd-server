@@ -6,10 +6,62 @@ import hashlib
 import subprocess
 import os
 import re
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 from enum import Enum
+from pydantic import BaseModel, Field
 
-app = FastAPI()
+# Pydantic models for API documentation
+class BuildRequest(BaseModel):
+    flavor: str = Field(default="dev", description="Build flavor (dev or prod)")
+    platform: str = Field(default="all", description="Target platform (all, android, or ios)")
+    build_name: Optional[str] = Field(default=None, description="Custom build name")
+    build_number: Optional[str] = Field(default=None, description="Custom build number")
+    branch_name: Optional[str] = Field(default=None, description="Git branch name to build from")
+
+class BuildStatusResponse(BaseModel):
+    build_id: str
+    status: str
+    started_at: str
+    flavor: str
+    platform: str
+    branch_name: Optional[str] = None
+    build_name: Optional[str] = None
+    build_number: Optional[str] = None
+    processes: Dict
+    progress: Dict
+    logs: List[str]
+
+class BuildSummary(BaseModel):
+    build_id: str
+    status: str
+    started_at: str
+    flavor: str
+    platform: str
+    branch_name: Optional[str] = None
+    build_name: Optional[str] = None
+    build_number: Optional[str] = None
+
+class BuildsResponse(BaseModel):
+    builds: List[BuildSummary]
+
+class WebhookResponse(BaseModel):
+    status: str
+    build_id: Optional[str] = None
+
+class ManualBuildResponse(BaseModel):
+    status: str
+    build_id: str
+
+class RootResponse(BaseModel):
+    message: str
+
+app = FastAPI(
+    title="Flutter CI/CD Server API",
+    description="Flutter 애플리케이션의 CI/CD 파이프라인을 관리하는 서버 API",
+    version="1.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc"
+)
 
 # Build status tracking
 class BuildStatus(Enum):
@@ -36,14 +88,25 @@ def verify_signature(payload: bytes, signature: str) -> bool:
     return hmac.compare_digest(mac.hexdigest(), signature)
 
 
-@app.get("/")
+@app.get("/", response_model=RootResponse, tags=["Health Check"])
 async def root():
+    """
+    서버 상태 확인
+    
+    Flutter CI/CD 서버가 정상적으로 실행 중인지 확인합니다.
+    """
     return {"message": "👋 Flutter CI/CD Container is running!"}
 
 
-@app.get("/build/{build_id}")
+@app.get("/build/{build_id}", response_model=BuildStatusResponse, tags=["Build Status"])
 async def get_build_status(build_id: str):
-    """Get the current status and logs of a build"""
+    """
+    빌드 상태 조회
+    
+    특정 빌드 ID의 현재 상태와 로그를 조회합니다.
+    
+    - **build_id**: 조회할 빌드의 고유 ID
+    """
     if build_id not in build_jobs:
         raise HTTPException(status_code=404, detail="Build not found")
     
@@ -96,9 +159,13 @@ async def get_build_status(build_id: str):
     }
 
 
-@app.get("/builds")
+@app.get("/builds", response_model=BuildsResponse, tags=["Build Status"])
 async def list_builds():
-    """List all builds with their current status"""
+    """
+    빌드 목록 조회
+    
+    모든 빌드의 현재 상태를 조회합니다.
+    """
     builds = []
     for build_id, job in build_jobs.items():
         # Quick status check
@@ -122,12 +189,21 @@ async def list_builds():
     return {"builds": builds}
 
 
-@app.post("/webhook")
+@app.post("/webhook", response_model=WebhookResponse, tags=["GitHub Webhook"])
 async def handle_webhook(
     request: Request,
-    x_hub_signature_256: str = Header(None),
-    x_github_event: str = Header(None)
+    x_hub_signature_256: str = Header(None, description="GitHub webhook signature"),
+    x_github_event: str = Header(None, description="GitHub event type")
 ):
+    """
+    GitHub Webhook 처리
+    
+    GitHub에서 전송되는 webhook 이벤트를 처리합니다.
+    
+    지원하는 이벤트:
+    - PR이 develop 브랜치에 머지될 때 (dev 빌드 트리거)
+    - 태그가 생성될 때 (prod 빌드 트리거)
+    """
     body = await request.body()
 
     if not verify_signature(body, x_hub_signature_256):
@@ -161,16 +237,26 @@ async def handle_webhook(
     return {"status": "ok"}
 
 
-@app.post("/build")
-async def manual_build(request: Request):
-    body = await request.json()
-    flavor = body.get("flavor", "dev")
-    platform = body.get("platform", "all")
-    build_name = body.get("build_name", None)
-    build_number = body.get("build_number", None)
-    branch_name = body.get("branch_name", None)
+@app.post("/build", response_model=ManualBuildResponse, tags=["Manual Build"])
+async def manual_build(request: BuildRequest):
+    """
+    수동 빌드 트리거
     
-    build_id = start_build_pipeline(flavor, platform, build_name, build_number, branch_name)
+    빌드를 수동으로 트리거합니다.
+    
+    - **flavor**: 빌드 환경 (dev 또는 prod)
+    - **platform**: 대상 플랫폼 (all, android, ios)
+    - **build_name**: 커스텀 빌드 이름 (선택사항)
+    - **build_number**: 커스텀 빌드 번호 (선택사항)
+    - **branch_name**: 빌드할 Git 브랜치 이름 (선택사항)
+    """
+    build_id = start_build_pipeline(
+        request.flavor, 
+        request.platform, 
+        request.build_name, 
+        request.build_number, 
+        request.branch_name
+    )
     return {"status": "manual trigger ok", "build_id": build_id}
 
 
