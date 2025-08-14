@@ -14,5 +14,9 @@ set -a
 [ -f .env ] && . .env
 set +a
 
+mkdir -p ./src/dev
+mkdir -p ./src/stage
+mkdir -p ./src/prod
+
 echo "🚀 FastAPI 서버 실행 중..."
 uvicorn main:app --reload --host 0.0.0.0 --port 8000

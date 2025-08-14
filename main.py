@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 
 # Pydantic models for API documentation
 class BuildRequest(BaseModel):
-    flavor: str = Field(default="dev", description="Build flavor (dev or prod)")
+    flavor: str = Field(default="dev", description="Build flavor (dev, stage, prod)")
     platform: str = Field(default="all", description="Target platform (all, android, or ios)")
     build_name: Optional[str] = Field(default=None, description="Custom build name")
     build_number: Optional[str] = Field(default=None, description="Custom build number")
@@ -203,6 +203,9 @@ async def handle_webhook(
     지원하는 이벤트:
     - PR이 develop 브랜치에 머지될 때 (dev 빌드 트리거)
     - 태그가 생성될 때 (prod 빌드 트리거)
+    
+    참고:
+    - stage 빌드는 자동 트리거가 아닌 수동 트리거로 사용합니다.
     """
     body = await request.body()
 
@@ -244,7 +247,7 @@ async def manual_build(request: BuildRequest):
     
     빌드를 수동으로 트리거합니다.
     
-    - **flavor**: 빌드 환경 (dev 또는 prod)
+    - **flavor**: 빌드 환경 (dev, stage, prod)
     - **platform**: 대상 플랫폼 (all, android, ios)
     - **build_name**: 커스텀 빌드 이름 (선택사항)
     - **build_number**: 커스텀 빌드 번호 (선택사항)
@@ -319,6 +322,8 @@ def build_pipeline_with_monitoring(
             # Override the branch name environment variable based on flavor
             if flavor == "dev":
                 env["DEV_BRANCH_NAME"] = branch_name
+            elif flavor == "stage":
+                env["STAGE_BRANCH_NAME"] = branch_name
             elif flavor == "prod":
                 env["PROD_BRANCH_NAME"] = branch_name
             job['logs'].append(f"🌿 Using custom branch: {branch_name}")
@@ -370,7 +375,8 @@ def build_pipeline_with_monitoring(
                 android_build_args,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
-                text=True
+                text=True,
+                env=env
             )
             job['android_process'] = android_process
             processes.append(('android', android_process))
@@ -383,7 +389,8 @@ def build_pipeline_with_monitoring(
                 ios_build_args,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
-                text=True
+                text=True,
+                env=env
             )
             job['ios_process'] = ios_process
             processes.append(('ios', ios_process))
