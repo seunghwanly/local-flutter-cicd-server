@@ -32,7 +32,7 @@ while getopts n:b: opt; do
 done
 
 # fastlane 명령어 구성
-FASTLANE_CMD="fastlane $DEV_FASTLANE_LANE"
+FASTLANE_CMD="fvm exec fastlane $DEV_FASTLANE_LANE"
 
 # 파라미터 추가 (순서 보장)
 if [ ! -z "$BUILD_NAME" ] && [ ! -z "$BUILD_NUMBER" ]; then
@@ -45,6 +45,8 @@ elif [ ! -z "$BUILD_NUMBER" ]; then
     # build_number만 있는 경우
     FASTLANE_CMD="$FASTLANE_CMD build_number:\"$BUILD_NUMBER\""
 fi
+
+fvm exec fastlane match appstore --readonly
 
 # fastlane 실행
 echo "🚀 Running: $FASTLANE_CMD"

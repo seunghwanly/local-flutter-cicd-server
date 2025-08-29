@@ -10,6 +10,9 @@ echo "🚀 Android 배포 시작 (stage / BRANCH: $STAGE_BRANCH_NAME)"
 
 cd $STAGE_LOCAL_DIR/android
 
+# Gradle 캐시/설치 디렉터리를 환경별로 분리
+export GRADLE_USER_HOME="$STAGE_LOCAL_DIR/.gradle_stage"
+
 # 기본값 설정
 BUILD_NAME=""
 BUILD_NUMBER=""
@@ -31,8 +34,8 @@ while getopts n:b: opt; do
     esac
 done
 
-# fastlane 명령어 구성
-FASTLANE_CMD="fastlane $STAGE_FASTLANE_LANE"
+# fastlane 명령어 구성 (FVM을 통해 고정된 Flutter/fastlane 실행)
+FASTLANE_CMD="fvm exec fastlane $STAGE_FASTLANE_LANE"
 
 # 파라미터 추가 (순서 보장)
 if [ ! -z "$BUILD_NAME" ] && [ ! -z "$BUILD_NUMBER" ]; then

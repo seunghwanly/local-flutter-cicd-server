@@ -36,6 +36,8 @@ fi
 
 # Flutter SDK가 이미 설정되어 있다고 가정
 echo "🚧 Running flutter pub get ..."
-flutter pub get
+fvm use $FLUTTER_VERSION
+fvm flutter clean
+fvm exec melos run pub
 
 echo "✅ Setup success for branch: $DEV_BRANCH_NAME"

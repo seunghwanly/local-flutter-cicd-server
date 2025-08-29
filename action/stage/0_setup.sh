@@ -34,9 +34,11 @@ else
     exit 1
 fi
 
-# Flutter SDK가 이미 설정되어 있다고 가정
+# Flutter SDK는 FVM으로 버전 고정
 echo "🚧 Running flutter pub get ..."
-flutter pub get
+fvm use $FLUTTER_VERSION
+fvm flutter clean
+fvm exec melos run pub
 
 echo "✅ Setup success for branch: $STAGE_BRANCH_NAME (stage)"
 
