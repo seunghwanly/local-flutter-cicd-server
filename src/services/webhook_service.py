@@ -4,7 +4,6 @@ Flutter CI/CD Server - Webhook Service
 GitHub Webhook 처리 서비스
 """
 import os
-import re
 import hmac
 import hashlib
 from typing import Dict, Any
@@ -23,12 +22,33 @@ class WebhookService:
         self.github_secret = github_secret_env.encode()
     
     def verify_signature(self, payload: bytes, signature: str) -> bool:
-        """GitHub webhook 서명 검증"""
-        sha_name, signature = signature.split('=')
-        if sha_name != 'sha256':
+        """
+        GitHub webhook 서명 검증
+        
+        Args:
+            payload: 원본 페이로드 바이트
+            signature: GitHub에서 전송된 서명 헤더
+            
+        Returns:
+            서명 검증 성공 여부
+        """
+        if not signature:
             return False
-        mac = hmac.new(self.github_secret, msg=payload, digestmod=hashlib.sha256)
-        return hmac.compare_digest(mac.hexdigest(), signature)
+            
+        try:
+            if '=' not in signature:
+                return False
+                
+            sha_name, signature_hash = signature.split('=', 1)
+            if sha_name != 'sha256':
+                return False
+                
+            mac = hmac.new(self.github_secret, msg=payload, digestmod=hashlib.sha256)
+            return hmac.compare_digest(mac.hexdigest(), signature_hash)
+            
+        except (ValueError, AttributeError) as e:
+            print(f"⚠️ Signature verification error: {e}")
+            return False
     
     def handle_webhook(self, payload: Dict[str, Any], event_type: str) -> Dict[str, str]:
         """

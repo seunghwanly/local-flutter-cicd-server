@@ -14,6 +14,9 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# 상수 정의
+QUEUE_LOCK_TIMEOUT = 3600  # 1시간 (초)
+
 
 class BuildQueueManager:
     """
@@ -101,8 +104,7 @@ class BuildQueueManager:
         logger.info(f"[{build_id}] 📍 Lock file: {lock_file}")
         
         # 파일 기반 락으로 프로세스 간 동기화
-        # timeout=3600 (1시간) - 빌드가 1시간 이상 걸리면 타임아웃
-        with FileLock(str(lock_file), timeout=3600):
+        with FileLock(str(lock_file), timeout=QUEUE_LOCK_TIMEOUT):
             logger.info(f"[{build_id}] ✅ Queue lock acquired: {queue_key}")
             
             try:

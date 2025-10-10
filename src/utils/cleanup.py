@@ -13,6 +13,11 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# 상수 정의
+ORPHANED_LOCK_HOURS = 24  # 고아 락 파일 판정 시간 (시간)
+CLEANUP_SCHEDULE_TIME = "03:00"  # 정리 스케줄 시간
+SCHEDULER_CHECK_INTERVAL = 60  # 스케줄러 확인 간격 (초)
+
 
 def cleanup_old_builds(days: int = None):
     """
@@ -53,9 +58,12 @@ def cleanup_old_builds(days: int = None):
                     logger.info(f"🗑️ Deleted: {build_dir.name} ({size_mb:.1f} MB)")
                     print(f"🗑️ Deleted: {build_dir.name} ({size_mb:.1f} MB)")
                     
+                except (OSError, PermissionError) as e:
+                    logger.error(f"❌ Failed to delete {build_dir.name} (permission/OS error): {e}")
+                    print(f"❌ Failed to delete {build_dir.name} (permission/OS error): {e}")
                 except Exception as e:
-                    logger.error(f"❌ Failed to delete {build_dir.name}: {e}")
-                    print(f"❌ Failed to delete {build_dir.name}: {e}")
+                    logger.error(f"❌ Failed to delete {build_dir.name} (unexpected error): {e}")
+                    print(f"❌ Failed to delete {build_dir.name} (unexpected error): {e}")
         
         freed_gb = freed_space / 1024 / 1024 / 1024
         logger.info(f"✅ Cleanup complete: {deleted_count} builds deleted, {freed_gb:.2f} GB freed")
@@ -79,18 +87,21 @@ def cleanup_orphaned_locks():
     try:
         for lock_file in QUEUE_LOCKS_DIR.glob("*.lock"):
             try:
-                # 24시간 이상 된 락 파일은 고아로 간주
+                # 고아 락 파일 판정
                 lock_age = datetime.now() - datetime.fromtimestamp(lock_file.stat().st_mtime)
                 
-                if lock_age > timedelta(hours=24):
+                if lock_age > timedelta(hours=ORPHANED_LOCK_HOURS):
                     lock_file.unlink()
                     deleted_count += 1
                     logger.info(f"🗑️ Deleted orphaned lock: {lock_file.name}")
                     print(f"🗑️ Deleted orphaned lock: {lock_file.name}")
                     
+            except (OSError, PermissionError) as e:
+                logger.error(f"❌ Failed to delete lock {lock_file.name} (permission/OS error): {e}")
+                print(f"❌ Failed to delete lock {lock_file.name} (permission/OS error): {e}")
             except Exception as e:
-                logger.error(f"❌ Failed to delete lock {lock_file.name}: {e}")
-                print(f"❌ Failed to delete lock {lock_file.name}: {e}")
+                logger.error(f"❌ Failed to delete lock {lock_file.name} (unexpected error): {e}")
+                print(f"❌ Failed to delete lock {lock_file.name} (unexpected error): {e}")
         
         if deleted_count > 0:
             logger.info(f"✅ Removed {deleted_count} orphaned locks")
@@ -115,23 +126,23 @@ def start_cleanup_scheduler(cleanup_days: int = None):
     if cleanup_days is None:
         cleanup_days = get_cache_cleanup_days()
     
-    # 매일 새벽 3시에 정리
-    schedule.every().day.at("03:00").do(cleanup_old_builds, days=cleanup_days)
-    schedule.every().day.at("03:00").do(cleanup_orphaned_locks)
+    # 매일 정리 스케줄 설정
+    schedule.every().day.at(CLEANUP_SCHEDULE_TIME).do(cleanup_old_builds, days=cleanup_days)
+    schedule.every().day.at(CLEANUP_SCHEDULE_TIME).do(cleanup_orphaned_locks)
     
     logger.info(f"🕒 Cleanup scheduler started")
-    logger.info(f"   - Daily cleanup at 03:00")
+    logger.info(f"   - Daily cleanup at {CLEANUP_SCHEDULE_TIME}")
     logger.info(f"   - Keeping {cleanup_days} days of build caches")
-    print(f"🕒 Cleanup scheduler started (daily at 03:00, keeping {cleanup_days} days)")
+    print(f"🕒 Cleanup scheduler started (daily at {CLEANUP_SCHEDULE_TIME}, keeping {cleanup_days} days)")
     
     while True:
         try:
             schedule.run_pending()
-            time.sleep(60)  # 1분마다 확인
+            time.sleep(SCHEDULER_CHECK_INTERVAL)
         except Exception as e:
             logger.error(f"❌ Scheduler error: {e}")
             print(f"❌ Scheduler error: {e}")
-            time.sleep(60)
+            time.sleep(SCHEDULER_CHECK_INTERVAL)
 
 
 def manual_cleanup(days: int = None):

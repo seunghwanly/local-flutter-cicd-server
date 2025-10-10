@@ -204,6 +204,39 @@ def warmup_git_dependencies(pub_cache_dir: Path, build_id: str = None) -> bool:
         return False
 
 
+def _create_symlink_or_directory(target_path: Path, source_path: Path = None, build_id: str = None) -> None:
+    """
+    심볼릭 링크 또는 디렉토리를 안전하게 생성합니다.
+    
+    Args:
+        target_path: 생성할 경로
+        source_path: 심볼릭 링크 대상 경로 (None이면 일반 디렉토리)
+        build_id: 빌드 ID (로깅용)
+    """
+    log_prefix = f"[{build_id}] " if build_id else ""
+    
+    # 기존 디렉토리/링크 제거
+    if target_path.exists() or target_path.is_symlink():
+        try:
+            if target_path.is_symlink():
+                target_path.unlink()
+            elif target_path.is_dir():
+                shutil.rmtree(target_path)
+        except Exception as e:
+            logger.warning(f"{log_prefix}Failed to remove existing path {target_path}: {e}")
+    
+    # 새로 생성
+    try:
+        if source_path:
+            target_path.symlink_to(source_path)
+            logger.info(f"{log_prefix}🔗 Linked {target_path.name} to {source_path}")
+        else:
+            target_path.mkdir(parents=True, exist_ok=True)
+            logger.info(f"{log_prefix}📁 Created directory {target_path.name}")
+    except Exception as e:
+        logger.error(f"{log_prefix}Failed to create {target_path}: {e}")
+        raise
+
 def get_isolated_env(build_id: str, flutter_version: str = None, gradle_version: str = None, cocoapods_version: str = None) -> dict:
     """
     완전히 격리된 환경변수 생성
@@ -255,58 +288,26 @@ def get_isolated_env(build_id: str, flutter_version: str = None, gradle_version:
         gem_home_dir = (workspace / "gem_home").resolve()
         cocoapods_cache_dir = (workspace / "cocoapods_cache").resolve()
         
-        # 기존 디렉토리/링크 제거 후 새로 생성
-        if pub_cache_dir.exists() or pub_cache_dir.is_symlink():
-            if pub_cache_dir.is_symlink():
-                pub_cache_dir.unlink()
-            elif pub_cache_dir.is_dir():
-                import shutil
-                shutil.rmtree(pub_cache_dir)
-        
+        # 공유 캐시 디렉토리 생성
         if flutter_version and 'pub_cache' in shared_caches:
-            pub_cache_dir.symlink_to(shared_caches['pub_cache'])
-            logger.info(f"[{build_id}] 🔗 PUB_CACHE linked to shared cache: {shared_caches['pub_cache']}")
+            _create_symlink_or_directory(pub_cache_dir, shared_caches['pub_cache'], build_id)
         else:
-            pub_cache_dir.mkdir(parents=True, exist_ok=True)
-        
-        if gradle_home_dir.exists() or gradle_home_dir.is_symlink():
-            if gradle_home_dir.is_symlink():
-                gradle_home_dir.unlink()
-            elif gradle_home_dir.is_dir():
-                import shutil
-                shutil.rmtree(gradle_home_dir)
+            _create_symlink_or_directory(pub_cache_dir, None, build_id)
         
         if gradle_version and 'gradle_cache' in shared_caches:
-            gradle_home_dir.symlink_to(shared_caches['gradle_cache'])
-            logger.info(f"[{build_id}] 🔗 GRADLE_HOME linked to shared cache: {shared_caches['gradle_cache']}")
+            _create_symlink_or_directory(gradle_home_dir, shared_caches['gradle_cache'], build_id)
         else:
-            gradle_home_dir.mkdir(parents=True, exist_ok=True)
-        
-        if gem_home_dir.exists() or gem_home_dir.is_symlink():
-            if gem_home_dir.is_symlink():
-                gem_home_dir.unlink()
-            elif gem_home_dir.is_dir():
-                import shutil
-                shutil.rmtree(gem_home_dir)
+            _create_symlink_or_directory(gradle_home_dir, None, build_id)
         
         if cocoapods_version and 'gem_cache' in shared_caches:
-            gem_home_dir.symlink_to(shared_caches['gem_cache'])
-            logger.info(f"[{build_id}] 🔗 GEM_HOME linked to shared cache: {shared_caches['gem_cache']}")
+            _create_symlink_or_directory(gem_home_dir, shared_caches['gem_cache'], build_id)
         else:
-            gem_home_dir.mkdir(parents=True, exist_ok=True)
-        
-        if cocoapods_cache_dir.exists() or cocoapods_cache_dir.is_symlink():
-            if cocoapods_cache_dir.is_symlink():
-                cocoapods_cache_dir.unlink()
-            elif cocoapods_cache_dir.is_dir():
-                import shutil
-                shutil.rmtree(cocoapods_cache_dir)
+            _create_symlink_or_directory(gem_home_dir, None, build_id)
         
         if cocoapods_version and 'cocoapods_cache' in shared_caches:
-            cocoapods_cache_dir.symlink_to(shared_caches['cocoapods_cache'])
-            logger.info(f"[{build_id}] 🔗 CP_HOME_DIR linked to shared cache: {shared_caches['cocoapods_cache']}")
+            _create_symlink_or_directory(cocoapods_cache_dir, shared_caches['cocoapods_cache'], build_id)
         else:
-            cocoapods_cache_dir.mkdir(parents=True, exist_ok=True)
+            _create_symlink_or_directory(cocoapods_cache_dir, None, build_id)
     else:
         # 버전 정보 없으면 독립 디렉토리 생성 (기존 동작)
         pub_cache_dir = (workspace / "pub_cache").resolve()
