@@ -129,7 +129,8 @@ uvicorn main:app --host 0.0.0.0 --port 8000 --reload
   "platform": "all",
   "build_name": "custom-build",
   "build_number": "1.2.3",
-  "branch_name": "develop"
+  "branch_name": "develop",
+  "fvm_flavor": "winc1"
 }
 ```
 
@@ -139,6 +140,7 @@ uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 - `build_name` (string, 선택사항): 커스텀 빌드 이름
 - `build_number` (string, 선택사항): 커스텀 빌드 번호
 - `branch_name` (string, 선택사항): 빌드할 Git 브랜치 이름
+- `fvm_flavor` (string, 선택사항): FVM/Pods 버전 키. 루트의 `fvm_flavors.json`에서 버전 매핑을 조회합니다
 
 **응답 예시:**
 ```json
