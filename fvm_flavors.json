@@ -1,0 +1,15 @@
+{
+  "winc1": {
+    "flutter_version": "3.29.3",
+    "cocoapods_version": "1.14.3",
+    "fastlane_version": "2.228.0",
+    "gradle_version": "8.10"
+  },
+  "winc2": {
+    "flutter_version": "3.35.4",
+    "cocoapods_version": "1.16.1",
+    "fastlane_version": "2.228.0",
+    "gradle_version": "8.11"
+  }
+}
+
