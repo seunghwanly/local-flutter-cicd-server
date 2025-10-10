@@ -7,6 +7,7 @@ import os
 import subprocess
 import threading
 import logging
+import json
 from datetime import datetime
 from typing import Dict, Optional
 from enum import Enum
@@ -138,7 +139,6 @@ class BuildService:
             return versions
             
         try:
-            import json
             mapping_path = os.path.join(os.getcwd(), 'fvm_flavors.json')
             with open(mapping_path, 'r') as f:
                 flavor_map = json.load(f)

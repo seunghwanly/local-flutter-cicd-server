@@ -10,6 +10,9 @@ import shutil
 
 logger = logging.getLogger(__name__)
 
+# 상수 정의
+SSH_KEY_RESTRICTIVE_PERMS = 0o077
+
 # 기본 경로 설정 (항상 절대 경로 사용)
 WORKSPACE_ROOT = Path(os.environ.get("WORKSPACE_ROOT", os.path.expanduser("~/ci-cd-workspace"))).resolve()
 BUILDS_DIR = (WORKSPACE_ROOT / "builds").resolve()
@@ -66,7 +69,7 @@ def setup_git_credentials(build_workspace: Path, env: dict):
     ssh_key = home_dir / ".ssh" / "id_rsa"
     if ssh_key.exists():
         key_stat = ssh_key.stat()
-        if key_stat.st_mode & 0o077:
+        if key_stat.st_mode & SSH_KEY_RESTRICTIVE_PERMS:
             print(f"⚠️ Warning: SSH key has too open permissions")
             logger.warning(f"⚠️ Warning: SSH key has too open permissions")
         print(f"✅ SSH key found: {ssh_key}")

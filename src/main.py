@@ -51,7 +51,7 @@ def load_env_file(env_file_path: Path) -> bool:
                         os.environ[key] = value
                         loaded_count += 1
                     except ValueError as e:
-                        logger.warning(f"Invalid line {line_num} in {env_file_path}: {line}")
+                        logger.warning(f"Invalid line {line_num} in {env_file_path}: {line} - {e}")
                         continue
         
         logger.info(f"Loaded {loaded_count} environment variables from {env_file_path}")
