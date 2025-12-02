@@ -122,6 +122,7 @@ def get_version_cache_dirs(flutter_version: str = None, gradle_version: str = No
         - gradle_cache: Gradle 캐시
         - gem_cache: Ruby gems 캐시
         - cocoapods_cache: CocoaPods 캐시
+        - deriveddata_cache: Xcode DerivedData 캐시
     """
     shared = get_shared_cache_dir()
     result = {}
@@ -153,6 +154,11 @@ def get_version_cache_dirs(flutter_version: str = None, gradle_version: str = No
         cocoapods_cache = shared / "cocoapods" / cocoapods_version
         cocoapods_cache.mkdir(parents=True, exist_ok=True)
         result['cocoapods_cache'] = cocoapods_cache
+        
+        # DerivedData 캐시 (CocoaPods 버전별)
+        deriveddata_cache = shared / "deriveddata" / cocoapods_version
+        deriveddata_cache.mkdir(parents=True, exist_ok=True)
+        result['deriveddata_cache'] = deriveddata_cache
     
     return result
 
@@ -250,6 +256,7 @@ def get_isolated_env(build_id: str, flutter_version: str = None, gradle_version:
     - gradle_home/: Android Gradle 캐시 → 버전별 공유 캐시에 심볼릭 링크
     - gem_home/: Ruby gems (CocoaPods 포함) → 버전별 공유 캐시에 심볼릭 링크
     - cocoapods_cache/: CocoaPods 캐시 → 버전별 공유 캐시에 심볼릭 링크
+    - deriveddata_cache/: Xcode DerivedData 캐시 → 버전별 공유 캐시에 심볼릭 링크
     - pub_cache/git/: Git 의존성은 전역 공유
     
     Args:
@@ -266,6 +273,7 @@ def get_isolated_env(build_id: str, flutter_version: str = None, gradle_version:
         - gradle_home_dir: GRADLE_USER_HOME 경로
         - gem_home_dir: GEM_HOME 경로
         - cocoapods_cache_dir: CP_HOME_DIR 경로
+        - deriveddata_cache_dir: DERIVED_DATA_PATH 경로
     """
     workspace = get_build_workspace(build_id)
     
@@ -290,6 +298,7 @@ def get_isolated_env(build_id: str, flutter_version: str = None, gradle_version:
         gradle_home_dir = (workspace / "gradle_home").resolve()
         gem_home_dir = (workspace / "gem_home").resolve()
         cocoapods_cache_dir = (workspace / "cocoapods_cache").resolve()
+        deriveddata_cache_dir = (workspace / "deriveddata_cache").resolve()
         
         # 공유 캐시 디렉토리 생성
         if flutter_version and 'pub_cache' in shared_caches:
@@ -311,17 +320,24 @@ def get_isolated_env(build_id: str, flutter_version: str = None, gradle_version:
             _create_symlink_or_directory(cocoapods_cache_dir, shared_caches['cocoapods_cache'], build_id)
         else:
             _create_symlink_or_directory(cocoapods_cache_dir, None, build_id)
+        
+        if cocoapods_version and 'deriveddata_cache' in shared_caches:
+            _create_symlink_or_directory(deriveddata_cache_dir, shared_caches['deriveddata_cache'], build_id)
+        else:
+            _create_symlink_or_directory(deriveddata_cache_dir, None, build_id)
     else:
         # 버전 정보 없으면 독립 디렉토리 생성 (기존 동작)
         pub_cache_dir = (workspace / "pub_cache").resolve()
         gradle_home_dir = (workspace / "gradle_home").resolve()
         gem_home_dir = (workspace / "gem_home").resolve()
         cocoapods_cache_dir = (workspace / "cocoapods_cache").resolve()
+        deriveddata_cache_dir = (workspace / "deriveddata_cache").resolve()
         
         pub_cache_dir.mkdir(parents=True, exist_ok=True)
         gradle_home_dir.mkdir(parents=True, exist_ok=True)
         gem_home_dir.mkdir(parents=True, exist_ok=True)
         cocoapods_cache_dir.mkdir(parents=True, exist_ok=True)
+        deriveddata_cache_dir.mkdir(parents=True, exist_ok=True)
     
     # 환경변수 복사
     env = os.environ.copy()
@@ -332,6 +348,7 @@ def get_isolated_env(build_id: str, flutter_version: str = None, gradle_version:
     env["GEM_HOME"] = str(gem_home_dir)
     env["GEM_PATH"] = str(gem_home_dir)
     env["CP_HOME_DIR"] = str(cocoapods_cache_dir)
+    env["DERIVED_DATA_PATH"] = str(deriveddata_cache_dir)
     env["PATH"] = f"{gem_home_dir / 'bin'}:{pub_cache_dir / 'bin'}:{env.get('PATH', '/usr/local/bin:/usr/bin:/bin')}"
     env["HOME"] = str(Path.home().resolve())  # 명시적 HOME 설정 (절대 경로)
     
@@ -362,6 +379,7 @@ def get_isolated_env(build_id: str, flutter_version: str = None, gradle_version:
     logger.info(f"[{build_id}]   - GRADLE_HOME: {gradle_home_dir}")
     logger.info(f"[{build_id}]   - GEM_HOME: {gem_home_dir}")
     logger.info(f"[{build_id}]   - CP_HOME_DIR: {cocoapods_cache_dir}")
+    logger.info(f"[{build_id}]   - DERIVED_DATA_PATH: {deriveddata_cache_dir}")
     logger.info(f"[{build_id}]   - HOME: {env.get('HOME')}")
     logger.info(f"[{build_id}]   - SSH_AUTH_SOCK: {env.get('SSH_AUTH_SOCK', 'NOT SET')}")
     
@@ -372,6 +390,7 @@ def get_isolated_env(build_id: str, flutter_version: str = None, gradle_version:
         "gradle_home_dir": str(gradle_home_dir),
         "gem_home_dir": str(gem_home_dir),
         "cocoapods_cache_dir": str(cocoapods_cache_dir),
+        "deriveddata_cache_dir": str(deriveddata_cache_dir),
     }
 
 

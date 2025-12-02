@@ -131,26 +131,25 @@ fi
 
 # Flutter 버전 결정
 echo "🚧 Resolving Flutter SDK version..."
-if [ -z "$FLUTTER_VERSION" ]; then
-    # .fvmrc가 있을 경우 파싱하여 버전 선택
-    if [ -f ".fvmrc" ]; then
-        echo "🔎 .fvmrc found. Parsing..."
-        # FVM_FLAVOR가 설정되어 있으면 해당 flavor 사용
-        if [ ! -z "$FVM_FLAVOR" ]; then
-            FLUTTER_VERSION=$(sed -n "s/.*\"$FVM_FLAVOR\"[[:space:]]*:[[:space:]]*\"\(.*\)\".*/\1/p" .fvmrc | head -n 1)
-        fi
-        # flavor에 없거나 미지정이면 기본 flutter 키 사용
-        if [ -z "$FLUTTER_VERSION" ]; then
-            FLUTTER_VERSION=$(sed -n 's/.*"flutter"[[:space:]]*:[[:space:]]*"\(.*\)".*/\1/p' .fvmrc | head -n 1)
-        fi
-    fi
-fi
 
-if [ ! -z "$FLUTTER_VERSION" ]; then
-    echo "🔧 fvm use $FLUTTER_VERSION"
-    fvm use $FLUTTER_VERSION
+# FLUTTER_SDK_VERSION이 제공되면 fvm use 실행, 없으면 .fvmrc 파일 사용
+if [ ! -z "$FLUTTER_SDK_VERSION" ]; then
+    echo "🔧 Using FLUTTER_SDK_VERSION from environment: $FLUTTER_SDK_VERSION"
+    echo "📦 Running: fvm use $FLUTTER_SDK_VERSION"
+    fvm use "$FLUTTER_SDK_VERSION" || {
+        echo "❌ Failed to set Flutter SDK version: $FLUTTER_SDK_VERSION"
+        exit 1
+    }
+    echo "✅ Flutter SDK version set to: $FLUTTER_SDK_VERSION"
 else
-    echo "⚠️ FLUTTER_VERSION not specified, using system default"
+    echo "📄 FLUTTER_SDK_VERSION not provided, using .fvmrc from repository"
+    if [ -f ".fvmrc" ]; then
+        echo "✅ Found .fvmrc file, FVM will use it automatically"
+        # fvm use 명령어를 실행하지 않으면 FVM이 .fvmrc를 자동으로 사용합니다
+    else
+        echo "⚠️ Warning: .fvmrc file not found in repository"
+        echo "   FVM will use the default Flutter version"
+    fi
 fi
 
 # ✅ PUB_CACHE git 디렉토리 확인 (심볼릭 링크일 수 있음)
@@ -201,6 +200,10 @@ echo "📍 PUB_CACHE bin will be at: $PUB_CACHE/bin"
 # Melos globally activate (격리된 캐시에)
 echo "🔧 Activating melos..."
 fvm dart pub global activate melos
+
+# FlutterFire CLI globally activate (격리된 캐시에)
+echo "🔥 Activating flutterfire_cli..."
+fvm dart pub global activate flutterfire_cli
 
 # 의존성 설치 전 환경 재확인
 echo "🚧 Running flutter pub get with verbose logging..."

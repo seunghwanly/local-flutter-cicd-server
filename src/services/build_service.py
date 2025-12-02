@@ -7,7 +7,6 @@ import os
 import subprocess
 import threading
 import logging
-import json
 from datetime import datetime
 from typing import Dict, Optional
 from enum import Enum
@@ -82,7 +81,10 @@ class BuildService:
         build_name: str = None,
         build_number: str = None,
         branch_name: str = None,
-        fvm_flavor: str = None,
+        flutter_sdk_version: str = None,
+        gradle_version: str = None,
+        cocoapods_version: str = None,
+        fastlane_version: str = None,
     ) -> str:
         """Start a build pipeline and return build ID for tracking"""
         now = datetime.now()
@@ -94,7 +96,7 @@ class BuildService:
             branch_name = os.environ.get(env_key, "develop")
         
         # 큐 키 생성
-        queue_key = queue_manager.get_queue_key(branch_name, fvm_flavor, flavor)
+        queue_key = queue_manager.get_queue_key(branch_name, flutter_sdk_version, flavor)
         
         # Initialize build job tracking
         self.build_jobs[build_id] = {
@@ -106,7 +108,10 @@ class BuildService:
             "build_name": build_name,
             "build_number": build_number,
             "branch_name": branch_name,
-            "fvm_flavor": fvm_flavor,
+            "flutter_sdk_version": flutter_sdk_version,
+            "gradle_version": gradle_version,
+            "cocoapods_version": cocoapods_version,
+            "fastlane_version": fastlane_version,
             "queue_key": queue_key,
             "logs": []
         }
@@ -120,55 +125,20 @@ class BuildService:
                 queue_key,
                 build_id,
                 self._build_pipeline_with_monitoring,
-                build_id, flavor, platform, build_name, build_number, branch_name, fvm_flavor
+                build_id, flavor, platform, build_name, build_number, branch_name, flutter_sdk_version, gradle_version, cocoapods_version, fastlane_version
             )
         ).start()
         
         return build_id
     
-    def _load_fvm_flavor_mapping(self, build_id: str, fvm_flavor: str) -> Dict[str, str]:
-        """FVM flavor 매핑을 로드합니다."""
-        versions = {
-            'flutter_version': None,
-            'cocoapods_version': None,
-            'fastlane_version': None,
-            'gradle_version': None
-        }
-        
-        if not fvm_flavor:
-            return versions
-            
-        try:
-            mapping_path = os.path.join(os.getcwd(), 'fvm_flavors.json')
-            with open(mapping_path, 'r') as f:
-                flavor_map = json.load(f)
-                
-            if fvm_flavor in flavor_map:
-                versions['flutter_version'] = flavor_map[fvm_flavor].get('flutter_version')
-                versions['cocoapods_version'] = flavor_map[fvm_flavor].get('cocoapods_version')
-                versions['fastlane_version'] = flavor_map[fvm_flavor].get('fastlane_version')
-                versions['gradle_version'] = flavor_map[fvm_flavor].get('gradle_version')
-                
-                self._log_to_build_file(build_id, f"[{build_id}] 🔧 FVM flavor '{fvm_flavor}' loaded:")
-                for key, value in versions.items():
-                    if value:
-                        self._log_to_build_file(build_id, f"[{build_id}]    - {key.replace('_', ' ').title()}: {value}")
-            else:
-                self._log_to_build_file(build_id, f"[{build_id}] ⚠️ fvm_flavor '{fvm_flavor}' not found. Using defaults.")
-                
-        except Exception as e:
-            self._log_to_build_file(build_id, f"[{build_id}] ⚠️ Failed to load fvm_flavors.json: {str(e)}")
-            
-        return versions
-
-    def _setup_build_environment(self, build_id: str, flavor: str, branch_name: str, fvm_flavor: str, versions: Dict[str, str]) -> Dict:
+    def _setup_build_environment(self, build_id: str, flavor: str, branch_name: str, flutter_sdk_version: str, gradle_version: str = None, cocoapods_version: str = None, fastlane_version: str = None) -> Dict:
         """빌드 환경을 설정합니다."""
-        # 격리된 환경 생성
+        # 격리된 환경 생성 (flutter_sdk_version, gradle_version, cocoapods_version이 있으면 사용)
         isolated = get_isolated_env(
             build_id, 
-            flutter_version=versions['flutter_version'],
-            gradle_version=versions['gradle_version'],
-            cocoapods_version=versions['cocoapods_version']
+            flutter_version=flutter_sdk_version,
+            gradle_version=gradle_version,
+            cocoapods_version=cocoapods_version
         )
         env = isolated["env"]
         
@@ -178,11 +148,7 @@ class BuildService:
         self._log_to_build_file(build_id, f"[{build_id}] 🔧 GRADLE_HOME: {isolated['gradle_home_dir']}")
         self._log_to_build_file(build_id, f"[{build_id}] 💎 GEM_HOME: {isolated['gem_home_dir']}")
         self._log_to_build_file(build_id, f"[{build_id}] 🍫 CP_HOME_DIR: {isolated['cocoapods_cache_dir']}")
-        
-        # 버전 정보 환경변수 설정
-        for key, value in versions.items():
-            if value:
-                env[key.upper()] = value
+        self._log_to_build_file(build_id, f"[{build_id}] 🏗️ DERIVED_DATA_PATH: {isolated['deriveddata_cache_dir']}")
         
         # 기본 환경변수 설정
         env.update({
@@ -190,11 +156,43 @@ class BuildService:
             "LOCAL_DIR": isolated["repo_dir"],
             "BRANCH_NAME": branch_name,
             "FLAVOR": flavor,
-            "FASTLANE_LANE": os.environ.get(f"{flavor.upper()}_FASTLANE_LANE", "beta")
+            "FASTLANE_LANE": os.environ.get(f"{flavor.upper()}_FASTLANE_LANE", "beta"),
+            "DATADOG_API_KEY": os.environ.get("DATADOG_API_KEY", ""),
+            "GYM_DERIVED_DATA_PATH": isolated["deriveddata_cache_dir"],
+            "GYM_XCARCHIVE_PATH": os.path.join(isolated["deriveddata_cache_dir"], "Archives"),
+            "FLUTTER_BUILD_DERIVED_DATA_PATH": isolated["deriveddata_cache_dir"]
         })
         
-        if fvm_flavor:
-            env['FVM_FLAVOR'] = fvm_flavor
+        # Flutter SDK 버전 환경변수 설정 (있으면 fvm use 실행, 없으면 .fvmrc 사용)
+        if flutter_sdk_version:
+            env['FLUTTER_SDK_VERSION'] = flutter_sdk_version
+            self._log_to_build_file(build_id, f"[{build_id}] 🔧 Flutter SDK version specified: {flutter_sdk_version}")
+        else:
+            self._log_to_build_file(build_id, f"[{build_id}] 📄 Using .fvmrc from repository")
+        
+        # Gradle 버전 환경변수 설정 (기본값은 .env에서 가져옴)
+        final_gradle_version = gradle_version or os.environ.get("GRADLE_VERSION")
+        if final_gradle_version:
+            env['GRADLE_VERSION'] = final_gradle_version
+            self._log_to_build_file(build_id, f"[{build_id}] 🔧 Gradle version: {final_gradle_version}")
+        else:
+            self._log_to_build_file(build_id, f"[{build_id}] 📄 Using default Gradle version")
+        
+        # CocoaPods 버전 환경변수 설정 (기본값은 .env에서 가져옴)
+        final_cocoapods_version = cocoapods_version or os.environ.get("COCOAPODS_VERSION")
+        if final_cocoapods_version:
+            env['COCOAPODS_VERSION'] = final_cocoapods_version
+            self._log_to_build_file(build_id, f"[{build_id}] 🔧 CocoaPods version: {final_cocoapods_version}")
+        else:
+            self._log_to_build_file(build_id, f"[{build_id}] 📄 Using default CocoaPods version")
+        
+        # Fastlane 버전 환경변수 설정 (기본값은 .env에서 가져옴)
+        final_fastlane_version = fastlane_version or os.environ.get("FASTLANE_VERSION")
+        if final_fastlane_version:
+            env['FASTLANE_VERSION'] = final_fastlane_version
+            self._log_to_build_file(build_id, f"[{build_id}] 🔧 Fastlane version: {final_fastlane_version}")
+        else:
+            self._log_to_build_file(build_id, f"[{build_id}] 📄 Using default Fastlane version")
         
         # Fastlane Match 비밀번호 설정
         match_password = os.environ.get("MATCH_PASSWORD")
@@ -342,7 +340,10 @@ class BuildService:
         build_name: str,
         build_number: str,
         branch_name: str,
-        fvm_flavor: str,
+        flutter_sdk_version: str,
+        gradle_version: str = None,
+        cocoapods_version: str = None,
+        fastlane_version: str = None,
     ):
         """Enhanced build pipeline with complete environment isolation"""
         job = self.build_jobs[build_id]
@@ -352,11 +353,8 @@ class BuildService:
             print(f"[{build_id}] 🛠️ [{flavor}] Build started in isolated environment")
             self._log_to_build_file(build_id, f"[{build_id}] 🛠️ [{flavor}] Build started at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
             
-            # FVM flavor 매핑 로드
-            versions = self._load_fvm_flavor_mapping(build_id, fvm_flavor)
-            
             # 빌드 환경 설정
-            isolated = self._setup_build_environment(build_id, flavor, branch_name, fvm_flavor, versions)
+            isolated = self._setup_build_environment(build_id, flavor, branch_name, flutter_sdk_version, gradle_version, cocoapods_version, fastlane_version)
             env = isolated["env"]
             
             self._log_to_build_file(build_id, f"[{build_id}] 🌿 Branch: {branch_name}")
@@ -511,7 +509,10 @@ class BuildService:
             "started_at": job['started_at'],
             "flavor": job['flavor'],
             "platform": job['platform'],
-            "fvm_flavor": job.get('fvm_flavor'),
+            "flutter_sdk_version": job.get('flutter_sdk_version'),
+            "gradle_version": job.get('gradle_version'),
+            "cocoapods_version": job.get('cocoapods_version'),
+            "fastlane_version": job.get('fastlane_version'),
             "branch_name": job.get('branch_name'),
             "build_name": job.get('build_name'),
             "build_number": job.get('build_number'),
@@ -552,7 +553,10 @@ class BuildService:
                 "started_at": job['started_at'],
                 "flavor": job['flavor'],
                 "platform": job['platform'],
-                "fvm_flavor": job.get('fvm_flavor'),
+                "flutter_sdk_version": job.get('flutter_sdk_version'),
+                "gradle_version": job.get('gradle_version'),
+                "cocoapods_version": job.get('cocoapods_version'),
+                "fastlane_version": job.get('fastlane_version'),
                 "branch_name": job.get('branch_name'),
                 "build_name": job.get('build_name'),
                 "build_number": job.get('build_number'),

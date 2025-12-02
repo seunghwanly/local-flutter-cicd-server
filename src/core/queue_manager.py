@@ -2,7 +2,7 @@
 Flutter CI/CD Server - Queue Manager Module
 
 파일 기반 락을 사용한 빌드 큐 관리 시스템
-- 동일 (branch, fvm_flavor, flavor) 조합: 순차 실행
+- 동일 (branch, flutter_sdk_version, flavor) 조합: 순차 실행
 - 서로 다른 조합: 병렬 실행
 """
 import threading
@@ -32,7 +32,7 @@ class BuildQueueManager:
         self.locks_lock = threading.Lock()
         logger.info("🚀 Build Queue Manager initialized")
     
-    def get_queue_key(self, branch_name: str, fvm_flavor: str, flavor: str) -> str:
+    def get_queue_key(self, branch_name: str, flutter_sdk_version: str, flavor: str) -> str:
         """
         큐 식별자 생성
         
@@ -41,21 +41,21 @@ class BuildQueueManager:
         
         Args:
             branch_name: Git 브랜치 이름
-            fvm_flavor: FVM flavor (Flutter 버전 식별자)
+            flutter_sdk_version: Flutter SDK 버전 (예: '3.29.3', 'stable', None)
             flavor: 빌드 환경 (dev, stage, prod)
             
         Returns:
-            큐 키 문자열 (예: dev_develop_default, prod_main_flutter335)
+            큐 키 문자열 (예: dev_develop_default, prod_main_3_29_3)
         """
         # 브랜치명 정규화 (슬래시, 점 등을 언더스코어로 변경)
         normalized_branch = (branch_name or "unknown").replace('/', '_').replace('.', '_').replace('-', '_')
         
-        # FVM flavor 정규화
-        normalized_fvm = (fvm_flavor or 'default').replace('.', '_').replace('-', '_')
+        # Flutter SDK 버전 정규화
+        normalized_version = (flutter_sdk_version or 'default').replace('.', '_').replace('-', '_')
         
-        queue_key = f"{flavor}_{normalized_branch}_{normalized_fvm}"
+        queue_key = f"{flavor}_{normalized_branch}_{normalized_version}"
         
-        logger.debug(f"Generated queue key: {queue_key} (branch={branch_name}, fvm={fvm_flavor}, flavor={flavor})")
+        logger.debug(f"Generated queue key: {queue_key} (branch={branch_name}, flutter_sdk={flutter_sdk_version}, flavor={flavor})")
         
         return queue_key
     

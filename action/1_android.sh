@@ -17,12 +17,74 @@ echo "💎 GEM_HOME: $GEM_HOME"
 
 cd "$LOCAL_DIR/android" || exit 1
 
+# 독립적인 환경 확인
+echo ""
+echo "🔍 환경 독립성 검증..."
+echo "  📍 GEM_HOME: $GEM_HOME"
+echo "  📍 GEM_PATH: $GEM_HOME"
+
+# PATH에 GEM_HOME/bin 추가 (독립 gem 사용)
+export PATH="$GEM_HOME/bin:$PATH"
+export GEM_PATH="$GEM_HOME"
+
+echo "  ✅ 독립 환경 설정 완료"
+echo ""
+
+# gem 의존성 문제 해결: digest-crc 버전 충돌 방지
+echo "🔧 Resolving gem dependencies..."
+# google-cloud-storage가 요구하는 digest-crc (~> 0.4) 버전 확인 및 설치
+DIGEST_CRC_LIST=$(gem list digest-crc 2>/dev/null || echo "")
+if [ ! -z "$DIGEST_CRC_LIST" ]; then
+    # 설치된 버전 추출 (macOS 호환)
+    DIGEST_CRC_VERSIONS=$(echo "$DIGEST_CRC_LIST" | sed -n 's/.*digest-crc (\(.*\))/\1/p' | tr -d '()')
+    if [ ! -z "$DIGEST_CRC_VERSIONS" ]; then
+        echo "  📦 Current digest-crc versions: $DIGEST_CRC_VERSIONS"
+        # 0.4.x 버전이 있는지 확인
+        HAS_04_VERSION=false
+        for version in $DIGEST_CRC_VERSIONS; do
+            if [[ "$version" =~ ^0\.4\. ]]; then
+                HAS_04_VERSION=true
+                break
+            fi
+        done
+        
+        # 0.4.x 버전이 없고 다른 버전이 있으면 제거
+        if [ "$HAS_04_VERSION" = false ]; then
+            echo "  🔄 Removing incompatible digest-crc versions..."
+            for version in $DIGEST_CRC_VERSIONS; do
+                gem uninstall digest-crc -v "$version" -x -I || true
+            done
+        fi
+    fi
+fi
+
+# 올바른 버전의 digest-crc 설치
+if ! gem list -i digest-crc -v "~> 0.4" > /dev/null 2>&1; then
+    echo "💎 Installing digest-crc ~> 0.4..."
+    # 0.4.x 버전 중 최신 버전 설치 시도
+    gem install -N digest-crc -v "~> 0.4" || {
+        echo "⚠️ Failed to install digest-crc ~> 0.4, trying specific version 0.6.1..."
+        gem install -N digest-crc -v "0.6.1" || {
+            echo "⚠️ Trying version 0.5.1..."
+            gem install -N digest-crc -v "0.5.1" || true
+        }
+    }
+    echo "✅ digest-crc installed"
+else
+    echo "✅ digest-crc already installed with correct version"
+fi
+
 # Fastlane 설치 (격리된 GEM_HOME에 설치)
 echo "🚀 Installing Fastlane in isolated GEM_HOME..."
 if [ ! -z "$FASTLANE_VERSION" ]; then
     echo "💎 Installing Fastlane $FASTLANE_VERSION..."
     if ! gem list -i fastlane -v "$FASTLANE_VERSION" > /dev/null 2>&1; then
-        gem install -N fastlane -v "$FASTLANE_VERSION"
+        gem install -N fastlane -v "$FASTLANE_VERSION" || {
+            echo "⚠️ Fastlane installation failed, attempting dependency resolution..."
+            # 의존성 문제 해결 시도
+            gem install -N digest-crc -v "~> 0.4" || gem install -N digest-crc -v "0.6.1" || true
+            gem install -N fastlane -v "$FASTLANE_VERSION"
+        }
         echo "✅ Fastlane $FASTLANE_VERSION installed"
     else
         echo "✅ Fastlane $FASTLANE_VERSION already installed"
@@ -30,7 +92,12 @@ if [ ! -z "$FASTLANE_VERSION" ]; then
 else
     echo "💎 Installing latest Fastlane..."
     if ! gem list -i fastlane > /dev/null 2>&1; then
-        gem install -N fastlane
+        gem install -N fastlane || {
+            echo "⚠️ Fastlane installation failed, attempting dependency resolution..."
+            # 의존성 문제 해결 시도
+            gem install -N digest-crc -v "~> 0.4" || gem install -N digest-crc -v "0.6.1" || true
+            gem install -N fastlane
+        }
         echo "✅ Fastlane installed"
     else
         echo "✅ Fastlane already installed"

@@ -8,16 +8,42 @@ LOCAL_DIR="${LOCAL_DIR:?LOCAL_DIR 환경변수가 필요합니다}"
 PUB_CACHE="${PUB_CACHE:?PUB_CACHE 환경변수가 필요합니다}"
 GEM_HOME="${GEM_HOME:?GEM_HOME 환경변수가 필요합니다}"
 CP_HOME_DIR="${CP_HOME_DIR:?CP_HOME_DIR 환경변수가 필요합니다}"
+DERIVED_DATA_PATH="${DERIVED_DATA_PATH:?DERIVED_DATA_PATH 환경변수가 필요합니다}"
 
 echo "🚀 iOS 배포 시작"
 echo "📂 Repository: $LOCAL_DIR"
 echo "🔒 PUB_CACHE: $PUB_CACHE"
 echo "💎 GEM_HOME: $GEM_HOME"
 echo "🍫 CP_HOME_DIR: $CP_HOME_DIR"
+echo "🏗️ DERIVED_DATA_PATH: $DERIVED_DATA_PATH"
 
+# iOS 디렉토리로 이동
 cd "$LOCAL_DIR/ios" || exit 1
+echo "✅ 현재 디렉토리: $(pwd)"
 
-gem list fastlane
+# 독립적인 환경 확인
+echo ""
+echo "🔍 환경 독립성 검증..."
+echo "  📍 GEM_HOME: $GEM_HOME"
+echo "  📍 GEM_PATH: $GEM_HOME"
+echo "  📍 CP_HOME_DIR: $CP_HOME_DIR"
+echo "  📍 DERIVED_DATA_PATH: $DERIVED_DATA_PATH"
+
+# CocoaPods가 독립 캐시를 사용하는지 확인
+export CP_HOME_DIR="$CP_HOME_DIR"
+
+# DerivedData 경로 설정
+export DERIVED_DATA_PATH="$DERIVED_DATA_PATH"
+
+# Flutter 빌드 시 DerivedData 경로를 사용하도록 환경변수 설정
+export FLUTTER_BUILD_DERIVED_DATA_PATH="$DERIVED_DATA_PATH"
+
+# PATH에 GEM_HOME/bin 추가 (독립 gem 사용)
+export PATH="$GEM_HOME/bin:$PATH"
+export GEM_PATH="$GEM_HOME"
+
+echo "  ✅ 독립 환경 설정 완료"
+echo ""
 
 # Fastlane 레인 결정
 FASTLANE_LANE="${FASTLANE_LANE:-beta}"
@@ -50,6 +76,25 @@ done
 # fvm flutter --suppress-analytics --no-version-check build ios --config-only || true
 # popd > /dev/null
 
+# CocoaPods 설치 (격리된 GEM_HOME에 버전별로 설치) - Fastlane보다 먼저 설치
+if [ ! -z "$COCOAPODS_VERSION" ]; then
+    echo "💎 Installing CocoaPods $COCOAPODS_VERSION in isolated GEM_HOME..."
+    if ! gem list -i cocoapods -v "$COCOAPODS_VERSION" > /dev/null 2>&1; then
+        gem install -N cocoapods -v "$COCOAPODS_VERSION"
+        echo "✅ CocoaPods $COCOAPODS_VERSION installed"
+    else
+        echo "✅ CocoaPods $COCOAPODS_VERSION already installed"
+    fi
+else
+    echo "⚠️ COCOAPODS_VERSION not specified, installing latest CocoaPods"
+    if ! gem list -i cocoapods > /dev/null 2>&1; then
+        gem install -N cocoapods
+        echo "✅ CocoaPods installed"
+    else
+        echo "✅ CocoaPods already installed"
+    fi
+fi
+
 # Fastlane 설치 (격리된 GEM_HOME에 설치)
 echo "🚀 Installing Fastlane in isolated GEM_HOME..."
 if [ ! -z "$FASTLANE_VERSION" ]; then
@@ -76,21 +121,35 @@ if ! gem list -i fastlane > /dev/null 2>&1; then
     exit 1
 fi
 
-# CocoaPods 설치 (격리된 GEM_HOME에 버전별로 설치)
-if [ ! -z "$COCOAPODS_VERSION" ]; then
-    echo "💎 Installing CocoaPods $COCOAPODS_VERSION in isolated GEM_HOME..."
-    if ! gem list -i cocoapods -v "$COCOAPODS_VERSION" > /dev/null 2>&1; then
-        gem install -N cocoapods -v "$COCOAPODS_VERSION"
-        echo "✅ CocoaPods $COCOAPODS_VERSION installed"
-    else
-        echo "✅ CocoaPods $COCOAPODS_VERSION already installed"
-    fi
-    echo "📚 Running pod install..."
-    pod install --repo-update
+# Fastlane 플러그인 설치 (Pluginfile이 있는 경우)
+if [ -f "fastlane/Pluginfile" ]; then
+    echo "🔌 Installing Fastlane plugins from Pluginfile..."
+    
+    # Pluginfile에서 플러그인 추출 및 설치
+    while IFS= read -r line; do
+        # gem 'fastlane-plugin-xxx' 형태의 라인 파싱
+        if [[ $line =~ gem[[:space:]]+[\'\"](fastlane-plugin-[^\'\"]+)[\'\"] ]]; then
+            plugin_name="${BASH_REMATCH[1]}"
+            echo "  📦 Installing $plugin_name..."
+            if ! gem list -i "$plugin_name" > /dev/null 2>&1; then
+                gem install -N "$plugin_name"
+                echo "  ✅ $plugin_name installed"
+            else
+                echo "  ✅ $plugin_name already installed"
+            fi
+        fi
+    done < "fastlane/Pluginfile"
 else
-    echo "⚠️ COCOAPODS_VERSION not specified, using system default"
-    pod install --repo-update
+    echo "⚠️ No Pluginfile found, skipping plugin installation"
 fi
+
+# CocoaPods 버전 확인
+echo "📦 CocoaPods version:"
+pod --version
+
+# pod install 실행
+echo "📚 Running pod install..."
+pod install --repo-update
 
 # # Fastlane match (필요시)
 # # Flavor에 따라 match 타입 결정
@@ -115,8 +174,15 @@ elif [ ! -z "$BUILD_NUMBER" ]; then
     FASTLANE_CMD="$FASTLANE_CMD build_number:\"$BUILD_NUMBER\""
 fi
 
+# Fastlane 실행 전 DerivedData 관련 환경변수 설정
+export GYM_DERIVED_DATA_PATH="$DERIVED_DATA_PATH"
+export GYM_XCARCHIVE_PATH="$DERIVED_DATA_PATH/Archives"
+
 # Fastlane 실행
 echo "🚀 Running: $FASTLANE_CMD"
+echo "🏗️ Using DerivedData path: $DERIVED_DATA_PATH"
+echo "🏗️ GYM_DERIVED_DATA_PATH: $GYM_DERIVED_DATA_PATH"
+echo "🏗️ GYM_XCARCHIVE_PATH: $GYM_XCARCHIVE_PATH"
 if eval $FASTLANE_CMD; then
     echo "✅ iOS 빌드 완료"
 else

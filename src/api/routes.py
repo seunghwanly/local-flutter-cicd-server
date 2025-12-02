@@ -101,7 +101,10 @@ def create_app() -> FastAPI:
         - **build_name**: 커스텀 빌드 이름 (선택사항)
         - **build_number**: 커스텀 빌드 번호 (선택사항)
         - **branch_name**: 빌드할 Git 브랜치 이름 (선택사항)
-        - **fvm_flavor**: FVM flavor (선택사항)
+        - **flutter_sdk_version**: Flutter SDK 버전 (선택사항, e.g. '3.29.3', 'stable'). 제공되지 않으면 저장소의 .fvmrc 파일 사용
+        - **gradle_version**: Gradle 버전 (선택사항, e.g. '8.10', '8.11'). 제공되지 않으면 .env의 GRADLE_VERSION 사용
+        - **cocoapods_version**: CocoaPods 버전 (선택사항, e.g. '1.15.2', '1.16.2'). 제공되지 않으면 .env의 COCOAPODS_VERSION 사용
+        - **fastlane_version**: Fastlane 버전 (선택사항, e.g. '2.228.0'). 제공되지 않으면 .env의 FASTLANE_VERSION 사용
         """
         build_id = build_service.start_build_pipeline(
             request.flavor, 
@@ -109,7 +112,10 @@ def create_app() -> FastAPI:
             request.build_name, 
             request.build_number, 
             request.branch_name,
-            request.fvm_flavor
+            request.flutter_sdk_version,
+            request.gradle_version,
+            request.cocoapods_version,
+            request.fastlane_version
         )
         return {"status": "manual trigger ok", "build_id": build_id}
     
