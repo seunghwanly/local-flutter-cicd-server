@@ -3,7 +3,8 @@ Flutter CI/CD Server - API Routes
 
 FastAPI 라우트 정의
 """
-from fastapi import FastAPI, Request, Header, HTTPException
+from typing import Optional
+from fastapi import FastAPI, Request, Header, HTTPException, Form, Body
 from pathlib import Path
 import os
 import threading
@@ -90,7 +91,17 @@ def create_app() -> FastAPI:
         return result
     
     @app.post("/build", response_model=ManualBuildResponse, tags=["Manual Build"])
-    async def manual_build(request: BuildRequest):
+    async def manual_build(
+        flavor: str = Form("dev", description="flavor 설정: dev, stage, prod"),
+        platform: str = Form("all", description="platform 설정: all, android, ios"),
+        build_name: Optional[str] = Form("", description="build name 설정"),
+        build_number: Optional[str] = Form("", description="build number 설정"),
+        branch_name: Optional[str] = Form("", description="branch name 설정"),
+        flutter_sdk_version: Optional[str] = Form("", description="flutter sdk version 설정. 제공되지 않으면 저장소의 .fvmrc 파일 사용"),
+        gradle_version: Optional[str] = Form("", description="gradle version 설정. 제공되지 않으면 .env의 GRADLE_VERSION 사용"),
+        cocoapods_version: Optional[str] = Form("", description="cocoapods version 설정. 제공되지 않으면 .env의 COCOAPODS_VERSION 사용"),
+        fastlane_version: Optional[str] = Form("", description="fastlane version 설정. 제공되지 않으면 .env의 FASTLANE_VERSION 사용")
+    ):
         """
         수동 빌드 트리거
         
@@ -106,16 +117,25 @@ def create_app() -> FastAPI:
         - **cocoapods_version**: CocoaPods 버전 (선택사항, e.g. '1.15.2', '1.16.2'). 제공되지 않으면 .env의 COCOAPODS_VERSION 사용
         - **fastlane_version**: Fastlane 버전 (선택사항, e.g. '2.228.0'). 제공되지 않으면 .env의 FASTLANE_VERSION 사용
         """
+        # 빈 문자열을 None으로 변환
+        build_name = build_name if build_name else None
+        build_number = build_number if build_number else None
+        branch_name = branch_name if branch_name else None
+        flutter_sdk_version = flutter_sdk_version if flutter_sdk_version else None
+        gradle_version = gradle_version if gradle_version else None
+        cocoapods_version = cocoapods_version if cocoapods_version else None
+        fastlane_version = fastlane_version if fastlane_version else None
+        
         build_id = build_service.start_build_pipeline(
-            request.flavor, 
-            request.platform, 
-            request.build_name, 
-            request.build_number, 
-            request.branch_name,
-            request.flutter_sdk_version,
-            request.gradle_version,
-            request.cocoapods_version,
-            request.fastlane_version
+            flavor, 
+            platform, 
+            build_name, 
+            build_number, 
+            branch_name,
+            flutter_sdk_version,
+            gradle_version,
+            cocoapods_version,
+            fastlane_version
         )
         return {"status": "manual trigger ok", "build_id": build_id}
     
