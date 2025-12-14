@@ -15,6 +15,12 @@ if [ -f .env ]; then
     set -a
     source .env
     set +a
+    
+    # DATADOG_API_KEY가 있으면 명시적으로 export
+    if [ ! -z "$DATADOG_API_KEY" ]; then
+        export DATADOG_API_KEY="$DATADOG_API_KEY"
+        echo "✅ DATADOG_API_KEY 환경변수 설정 완료"
+    fi
 else
     echo "⚠️ .env 파일이 없습니다. env.template을 참고하여 .env 파일을 생성하세요."
 fi
