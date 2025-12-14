@@ -14,6 +14,35 @@ GitHub Webhook을 수신하고 Flutter 프로젝트를 자동 빌드하는 FastA
 
 ## 🚀 실행 가이드
 
+### 0. 필수 사전 요구사항
+
+iOS 빌드를 위해서는 rbenv와 Ruby가 필요합니다:
+
+```bash
+# rbenv 설치 (Homebrew 사용)
+brew install rbenv ruby-build
+
+# rbenv 초기화 (셸 설정 파일에 추가)
+echo 'eval "$(rbenv init - zsh)"' >> ~/.zshrc  # zsh 사용 시
+# 또는
+echo 'eval "$(rbenv init - bash)"' >> ~/.bash_profile  # bash 사용 시
+
+# 셸 재시작 또는 설정 파일 다시 로드
+source ~/.zshrc  # 또는 source ~/.bash_profile
+
+# Ruby 설치 (권장 버전: 3.2.0 이상)
+rbenv install 3.2.0
+rbenv shell 3.2.0
+
+# 설치 확인
+ruby -v
+```
+
+**참고:** `.env` 파일에서 `RUBY_VERSION` 환경변수를 설정하여 특정 Ruby 버전을 사용할 수 있습니다:
+```bash
+RUBY_VERSION=3.2.0
+```
+
 ### 1. 환경 설정
 
 ```bash
