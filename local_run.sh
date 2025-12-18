@@ -35,4 +35,15 @@ echo "🚀 FastAPI 서버 실행 중..."
 echo "📍 가상환경: $VIRTUAL_ENV"
 echo "📍 Python 경로: $(which python3)"
 
-uvicorn src.main:app --port 8000
+# 서버를 백그라운드에서 실행
+uvicorn src.main:app --port 8000 &
+
+# 서버가 시작될 때까지 잠시 대기
+sleep 3
+
+# 새로운 터미널 탭에서 ngrok 실행
+echo "🌐 ngrok 터널링 시작 중..."
+osascript -e "tell application \"Terminal\" to do script \"cd $(pwd) && ngrok http 8000 --url https://known-manually-cicada.ngrok-free.app\""
+
+# 포그라운드에서 서버 프로세스 대기 (Ctrl+C로 종료 가능)
+wait

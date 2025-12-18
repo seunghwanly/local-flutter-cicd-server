@@ -118,7 +118,13 @@ core/ → utils/
 
 ## 🔑 인증 설정 도우미
 
+이 서버는 두 가지 Git 인증 방식을 지원합니다:
+- **SSH 인증**: `GITHUB_TOKEN`이 없을 때 사용 (SSH 키 필요)
+- **HTTPS 인증**: `GITHUB_TOKEN`이 있을 때 자동으로 사용 (SSH 체크 건너뜀)
+
 ### GitHub Token 추가 방법 (PAT)
+
+`GITHUB_TOKEN`을 설정하면 SSH 인증을 건너뛰고 HTTPS 인증을 사용합니다.
 
 1. **GitHub Personal Access Token 생성:**
    - GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic)
@@ -128,12 +134,16 @@ core/ → utils/
 
 2. **.env 파일에 토큰 추가:**
    ```bash
-   # HTTPS URL 사용
+   # REPO_URL은 SSH 또는 HTTPS 형식 모두 가능
+   REPO_URL=git@github.com:your_org/your_repo.git
+   # 또는
    REPO_URL=https://github.com/your_org/your_repo.git
    
-   # GitHub Token 추가
+   # GitHub Token 추가 (HTTPS 인증 사용)
    GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
    ```
+
+**참고:** `GITHUB_TOKEN`이 설정되어 있으면 SSH 키 체크를 건너뛰고 HTTPS 인증을 사용합니다.
 
 ### git-credential 사용 방법
 

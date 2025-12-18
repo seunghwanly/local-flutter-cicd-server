@@ -15,57 +15,63 @@ echo "📂 Repository directory: $LOCAL_DIR"
 echo "🔒 PUB_CACHE: $PUB_CACHE"
 echo "🔧 GRADLE_USER_HOME: ${GRADLE_USER_HOME:-default}"
 
-# ✅ SSH 환경 진단
-echo "🔐 SSH Environment Diagnostics:"
-echo "   HOME: $HOME"
-echo "   SSH_AUTH_SOCK: ${SSH_AUTH_SOCK:-NOT SET}"
-echo "   GIT_SSH_COMMAND: ${GIT_SSH_COMMAND:-NOT SET}"
-
-# SSH 키 존재 확인
-if [ -f "$HOME/.ssh/id_rsa" ]; then
-    echo "✅ SSH private key found"
-    ls -l "$HOME/.ssh/id_rsa"
+# GITHUB_TOKEN이 있으면 HTTPS 모드, 없으면 SSH 모드
+if [ ! -z "$GITHUB_TOKEN" ]; then
+    echo "🔐 Using HTTPS authentication (GITHUB_TOKEN detected)"
+    echo "   Skipping SSH checks - will use HTTPS for Git operations"
 else
-    echo "❌ SSH private key NOT found at $HOME/.ssh/id_rsa"
-    exit 1
-fi
+    # ✅ SSH 환경 진단
+    echo "🔐 SSH Environment Diagnostics:"
+    echo "   HOME: $HOME"
+    echo "   SSH_AUTH_SOCK: ${SSH_AUTH_SOCK:-NOT SET}"
+    echo "   GIT_SSH_COMMAND: ${GIT_SSH_COMMAND:-NOT SET}"
 
-# SSH config 확인
-if [ -f "$HOME/.ssh/config" ]; then
-    echo "✅ SSH config found"
-    echo "   Config for github.com:"
-    grep -A 3 "^Host github.com" "$HOME/.ssh/config" || echo "   (no specific config)"
-else
-    echo "⚠️ SSH config not found (will use defaults)"
-fi
-
-# SSH Agent 확인
-if [ -n "$SSH_AUTH_SOCK" ] && [ -S "$SSH_AUTH_SOCK" ]; then
-    echo "✅ SSH Agent is running"
-    ssh-add -l 2>/dev/null || echo "   (no keys loaded, but agent is running)"
-else
-    echo "⚠️ SSH Agent not detected"
-    echo "   Attempting to start SSH Agent..."
-    eval "$(ssh-agent -s)"
-    ssh-add "$HOME/.ssh/id_rsa" 2>/dev/null || {
-        echo "❌ Failed to add SSH key"
-        echo "   Key might require a passphrase or is invalid"
+    # SSH 키 존재 확인
+    if [ -f "$HOME/.ssh/id_rsa" ]; then
+        echo "✅ SSH private key found"
+        ls -l "$HOME/.ssh/id_rsa"
+    else
+        echo "❌ SSH private key NOT found at $HOME/.ssh/id_rsa"
         exit 1
+    fi
+
+    # SSH config 확인
+    if [ -f "$HOME/.ssh/config" ]; then
+        echo "✅ SSH config found"
+        echo "   Config for github.com:"
+        grep -A 3 "^Host github.com" "$HOME/.ssh/config" || echo "   (no specific config)"
+    else
+        echo "⚠️ SSH config not found (will use defaults)"
+    fi
+
+    # SSH Agent 확인
+    if [ -n "$SSH_AUTH_SOCK" ] && [ -S "$SSH_AUTH_SOCK" ]; then
+        echo "✅ SSH Agent is running"
+        ssh-add -l 2>/dev/null || echo "   (no keys loaded, but agent is running)"
+    else
+        echo "⚠️ SSH Agent not detected"
+        echo "   Attempting to start SSH Agent..."
+        eval "$(ssh-agent -s)"
+        ssh-add "$HOME/.ssh/id_rsa" 2>/dev/null || {
+            echo "❌ Failed to add SSH key"
+            echo "   Key might require a passphrase or is invalid"
+            exit 1
+        }
+    fi
+
+    # Git SSH 접근 테스트
+    echo "🔍 Testing Git SSH access to GitHub..."
+    ssh -T git@github.com 2>&1 | head -5 || {
+        EXIT_CODE=$?
+        if [ $EXIT_CODE -eq 1 ]; then
+            # Exit code 1 is actually success for github.com SSH test
+            echo "✅ SSH authentication to GitHub successful"
+        else
+            echo "❌ SSH authentication to GitHub failed (exit code: $EXIT_CODE)"
+            echo "   This may cause git clone failures"
+        fi
     }
 fi
-
-# Git SSH 접근 테스트
-echo "🔍 Testing Git SSH access to GitHub..."
-ssh -T git@github.com 2>&1 | head -5 || {
-    EXIT_CODE=$?
-    if [ $EXIT_CODE -eq 1 ]; then
-        # Exit code 1 is actually success for github.com SSH test
-        echo "✅ SSH authentication to GitHub successful"
-    else
-        echo "❌ SSH authentication to GitHub failed (exit code: $EXIT_CODE)"
-        echo "   This may cause git clone failures"
-    fi
-}
 
 # Repository 접근 테스트
 echo "🔍 Testing repository access..."

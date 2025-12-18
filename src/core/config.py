@@ -28,55 +28,73 @@ logger.info(f"🔒 Queue locks directory: {QUEUE_LOCKS_DIR}")
 
 
 def setup_git_credentials(build_workspace: Path, env: dict):
-    """Git SSH 자격증명 완전 설정"""
+    """Git 자격증명 설정 (SSH 또는 HTTPS)"""
     home_dir = Path.home()
     
     # 1. HOME 환경변수 확인 (필수)
     if "HOME" not in env:
         env["HOME"] = str(home_dir)
     
-    # 2. SSH_AUTH_SOCK 확인 및 전달
-    ssh_auth_sock = os.environ.get("SSH_AUTH_SOCK")
-    if ssh_auth_sock:
-        env["SSH_AUTH_SOCK"] = ssh_auth_sock
-        print(f"✅ SSH_AUTH_SOCK: {ssh_auth_sock}")
-        logger.info(f"✅ SSH_AUTH_SOCK: {ssh_auth_sock}")
+    # GITHUB_TOKEN이 있으면 HTTPS 모드
+    github_token = os.environ.get("GITHUB_TOKEN")
+    if github_token:
+        # .git-credentials 파일 생성
+        git_credentials = build_workspace / ".git-credentials"
+        git_credentials.write_text(f"https://{github_token}@github.com\n")
+        git_credentials.chmod(0o600)
+        
+        # Git credential helper 설정
+        gitconfig = build_workspace / ".gitconfig"
+        gitconfig.write_text(f"""[credential]
+    helper = store --file={git_credentials}
+""")
+        env["GIT_CONFIG_GLOBAL"] = str(gitconfig)
+        print(f"✅ HTTPS credentials configured using GITHUB_TOKEN")
+        logger.info(f"✅ HTTPS credentials configured using GITHUB_TOKEN")
     else:
-        print(f"⚠️ SSH_AUTH_SOCK not found - SSH Agent may not be running")
-        logger.warning(f"⚠️ SSH_AUTH_SOCK not found - SSH Agent may not be running")
-    
-    # 3. SSH 설정 파일 명시적 지정
-    ssh_config = home_dir / ".ssh" / "config"
-    if ssh_config.exists():
-        # GIT_SSH_COMMAND로 SSH 옵션 명시
-        env["GIT_SSH_COMMAND"] = f"ssh -F {ssh_config} -o StrictHostKeyChecking=no"
-        print(f"✅ SSH config: {ssh_config}")
-        logger.info(f"✅ SSH config: {ssh_config}")
-    else:
-        # 기본 SSH 명령
-        env["GIT_SSH_COMMAND"] = "ssh -o StrictHostKeyChecking=no"
-    
-    # 4. .gitconfig 복사 (선택적이지만 권장)
-    gitconfig_src = home_dir / ".gitconfig"
-    if gitconfig_src.exists():
-        gitconfig_dest = build_workspace / ".gitconfig"
-        shutil.copy2(gitconfig_src, gitconfig_dest)
-        env["GIT_CONFIG_GLOBAL"] = str(gitconfig_dest)
-        print(f"✅ Copied .gitconfig")
-        logger.info(f"✅ Copied .gitconfig")
-    
-    # 5. SSH 키 권한 확인
-    ssh_key = home_dir / ".ssh" / "id_rsa"
-    if ssh_key.exists():
-        key_stat = ssh_key.stat()
-        if key_stat.st_mode & SSH_KEY_RESTRICTIVE_PERMS:
-            print(f"⚠️ Warning: SSH key has too open permissions")
-            logger.warning(f"⚠️ Warning: SSH key has too open permissions")
-        print(f"✅ SSH key found: {ssh_key}")
-        logger.info(f"✅ SSH key found: {ssh_key}")
-    else:
-        print(f"❌ SSH key not found: {ssh_key}")
-        logger.error(f"❌ SSH key not found: {ssh_key}")
+        # SSH 모드: 기존 SSH 설정 로직
+        # 2. SSH_AUTH_SOCK 확인 및 전달
+        ssh_auth_sock = os.environ.get("SSH_AUTH_SOCK")
+        if ssh_auth_sock:
+            env["SSH_AUTH_SOCK"] = ssh_auth_sock
+            print(f"✅ SSH_AUTH_SOCK: {ssh_auth_sock}")
+            logger.info(f"✅ SSH_AUTH_SOCK: {ssh_auth_sock}")
+        else:
+            print(f"⚠️ SSH_AUTH_SOCK not found - SSH Agent may not be running")
+            logger.warning(f"⚠️ SSH_AUTH_SOCK not found - SSH Agent may not be running")
+        
+        # 3. SSH 설정 파일 명시적 지정
+        ssh_config = home_dir / ".ssh" / "config"
+        if ssh_config.exists():
+            # GIT_SSH_COMMAND로 SSH 옵션 명시
+            env["GIT_SSH_COMMAND"] = f"ssh -F {ssh_config} -o StrictHostKeyChecking=no"
+            print(f"✅ SSH config: {ssh_config}")
+            logger.info(f"✅ SSH config: {ssh_config}")
+        else:
+            # 기본 SSH 명령
+            env["GIT_SSH_COMMAND"] = "ssh -o StrictHostKeyChecking=no"
+        
+        # 4. .gitconfig 복사 (선택적이지만 권장)
+        gitconfig_src = home_dir / ".gitconfig"
+        if gitconfig_src.exists():
+            gitconfig_dest = build_workspace / ".gitconfig"
+            shutil.copy2(gitconfig_src, gitconfig_dest)
+            env["GIT_CONFIG_GLOBAL"] = str(gitconfig_dest)
+            print(f"✅ Copied .gitconfig")
+            logger.info(f"✅ Copied .gitconfig")
+        
+        # 5. SSH 키 권한 확인
+        ssh_key = home_dir / ".ssh" / "id_rsa"
+        if ssh_key.exists():
+            key_stat = ssh_key.stat()
+            if key_stat.st_mode & SSH_KEY_RESTRICTIVE_PERMS:
+                print(f"⚠️ Warning: SSH key has too open permissions")
+                logger.warning(f"⚠️ Warning: SSH key has too open permissions")
+            print(f"✅ SSH key found: {ssh_key}")
+            logger.info(f"✅ SSH key found: {ssh_key}")
+        else:
+            print(f"❌ SSH key not found: {ssh_key}")
+            logger.error(f"❌ SSH key not found: {ssh_key}")
 
 
 def get_build_workspace(build_id: str) -> Path:
