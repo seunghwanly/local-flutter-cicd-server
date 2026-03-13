@@ -100,6 +100,42 @@ class ShorebirdActionServiceTests(unittest.TestCase):
             trigger_source="shorebird",
             trigger_event_id="shorebird-1",
             build_name="1.2.3",
+            build_number=None,
+            branch_name="main",
+        )
+
+    @patch("src.services.action_service.build_service.start_build_pipeline")
+    def test_handle_prefers_payload_build_metadata_when_present(self, start_build_pipeline) -> None:
+        start_build_pipeline.return_value = "build-456"
+        payload = {
+            "ref_type": "tag",
+            "ref": "1.2.3",
+            "payload": {
+                "build_name": "2.2.1",
+                "build_number": "689",
+            },
+        }
+        with patch.dict(
+            os.environ,
+            {
+                "SHOREBIRD_PATCH_FLAVOR": "prod",
+                "SHOREBIRD_PATCH_PLATFORM": "ios",
+                "SHOREBIRD_PATCH_BRANCH_NAME": "main",
+            },
+            clear=False,
+        ):
+            service = ShorebirdActionService()
+
+            result = service.handle(payload, "create", "shorebird-3")
+
+        self.assertEqual({"status": "ok", "build_id": "build-456"}, result)
+        start_build_pipeline.assert_called_once_with(
+            flavor="prod",
+            platform="ios",
+            trigger_source="shorebird",
+            trigger_event_id="shorebird-3",
+            build_name="2.2.1",
+            build_number="689",
             branch_name="main",
         )
 
