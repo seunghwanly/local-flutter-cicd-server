@@ -12,7 +12,7 @@ cp env.template .env
 
 **참고:** 
 - `local_run.sh`를 사용하면 `.env` 파일이 자동으로 로드됩니다.
-- 직접 서버를 실행할 경우: `export $(cat .env | xargs) && uvicorn main:app --reload`
+- 직접 서버를 실행할 경우 루트 `.env`도 자동으로 읽습니다: `./venv/bin/uvicorn src.main:app --reload`
 
 ### 방법 2: 직접 생성
 
@@ -35,7 +35,7 @@ CACHE_CLEANUP_DAYS=7
 ### Git & GitHub (필수)
 
 ```bash
-# GitHub Webhook 시크릿
+# GitHub Action 시크릿
 GITHUB_WEBHOOK_SECRET=your_webhook_secret_here
 
 # Git 리포지토리 URL
@@ -76,10 +76,19 @@ FLUTTER_VERSION=3.29.3
 # Prod 환경
 PROD_BRANCH_NAME=main
 PROD_FASTLANE_LANE=release
+WEBHOOK_PROD_TAG_PATTERN=^\d+\.\d+\.\d+$
 
 # Stage 환경
 STAGE_BRANCH_NAME=staging
 STAGE_FASTLANE_LANE=beta
+```
+
+### Webhook 정책
+
+```bash
+# develop merge webhook 정책
+WEBHOOK_DEV_BASE_BRANCH=develop
+WEBHOOK_DEV_HEAD_PREFIX=release/dev
 ```
 
 ### Slack 알림
@@ -205,4 +214,3 @@ curl -X POST "http://localhost:8000/build" \
 - [README.md](./README.md) - 프로젝트 전체 가이드
 - [PROCESS.md](./PROCESS.md) - 마이그레이션 진행 상황
 - [env.template](./env.template) - 환경변수 템플릿 파일
-

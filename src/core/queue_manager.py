@@ -9,7 +9,7 @@ import threading
 from typing import Dict, Callable
 from filelock import FileLock
 from pathlib import Path
-from .config import QUEUE_LOCKS_DIR
+from .config import QUEUE_LOCKS_DIR, get_max_parallel_builds
 import logging
 
 logger = logging.getLogger(__name__)
@@ -30,6 +30,7 @@ class BuildQueueManager:
         """큐 관리자 초기화"""
         self.queues: Dict[str, threading.Lock] = {}
         self.locks_lock = threading.Lock()
+        self.parallel_semaphore = threading.BoundedSemaphore(get_max_parallel_builds())
         logger.info("🚀 Build Queue Manager initialized")
     
     def get_queue_key(self, branch_name: str, flutter_sdk_version: str, flavor: str) -> str:
@@ -103,23 +104,24 @@ class BuildQueueManager:
         logger.info(f"[{build_id}] 🔒 Acquiring queue lock: {queue_key}")
         logger.info(f"[{build_id}] 📍 Lock file: {lock_file}")
         
-        # 파일 기반 락으로 프로세스 간 동기화
-        with FileLock(str(lock_file), timeout=QUEUE_LOCK_TIMEOUT):
-            logger.info(f"[{build_id}] ✅ Queue lock acquired: {queue_key}")
-            
-            try:
-                result = task(*args, **kwargs)
-                logger.info(f"[{build_id}] 🎉 Task completed successfully")
-                return result
+        with self.parallel_semaphore:
+            logger.info(f"[{build_id}] 🎛️ Parallel slot acquired")
+            # 파일 기반 락으로 프로세스 간 동기화
+            with FileLock(str(lock_file), timeout=QUEUE_LOCK_TIMEOUT):
+                logger.info(f"[{build_id}] ✅ Queue lock acquired: {queue_key}")
                 
-            except Exception as e:
-                logger.error(f"[{build_id}] ❌ Task failed: {str(e)}")
-                raise
-                
-            finally:
-                logger.info(f"[{build_id}] 🔓 Queue lock released: {queue_key}")
+                try:
+                    result = task(*args, **kwargs)
+                    logger.info(f"[{build_id}] 🎉 Task completed successfully")
+                    return result
+                    
+                except Exception as e:
+                    logger.error(f"[{build_id}] ❌ Task failed: {str(e)}")
+                    raise
+                    
+                finally:
+                    logger.info(f"[{build_id}] 🔓 Queue lock released: {queue_key}")
 
 
 # 전역 인스턴스
 queue_manager = BuildQueueManager()
-

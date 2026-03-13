@@ -1,11 +1,12 @@
 # 🚀 Flutter CI/CD Server
 
-GitHub Webhook을 수신하고 Flutter 프로젝트를 자동 빌드하는 FastAPI 기반 CI/CD 서버입니다.
+수동 빌드 요청과 GitHub action 이벤트를 수신해 Flutter 프로젝트를 자동 빌드하는 FastAPI 기반 CI/CD 서버입니다.
 
 ## 📦 지원 기능
 
-- **FastAPI 기반 Webhook 수신 서버** - GitHub 이벤트 자동 처리
+- **FastAPI 기반 GitHub Action 수신 서버** - 일반 빌드와 Shorebird patch 이벤트 처리
 - **Flutter SDK 자동 설치** - 버전별 격리된 환경 지원
+- **Python 오케스트레이션 우선** - Git sync, 브랜치 정렬, Flutter 버전 해석을 Python이 담당
 - **Android / iOS 빌드 환경** - Ruby + Fastlane 포함
 - **완전 격리된 빌드 환경** - PUB_CACHE, GRADLE_USER_HOME, GEM_HOME, CP_HOME_DIR 격리
 - **버전별 캐싱 전략** - Flutter, Gradle, CocoaPods 버전별 공유 캐시로 빌드 시간 단축
@@ -13,6 +14,8 @@ GitHub Webhook을 수신하고 Flutter 프로젝트를 자동 빌드하는 FastA
 - **자동 캐시 정리** - 7일 이상 된 빌드 자동 삭제
 
 ## 🚀 실행 가이드
+
+처음 pull 받은 뒤 바로 따라갈 수 있는 절차는 [`docs/FIRST_PULL_GUIDE.md`](./docs/FIRST_PULL_GUIDE.md)에 정리했습니다.
 
 ### 0. 필수 사전 요구사항
 
@@ -54,25 +57,35 @@ cp env.template .env
 
 | 항목 | 키 | 설명 |
 |------|----|------|
-| Flutter 버전 | `FLUTTER_VERSION` | 사용할 Flutter SDK 버전 |
+| Flutter 버전 | `FLUTTER_VERSION` | `.fvmrc`/`.tool-versions`가 없을 때만 쓰는 fallback Flutter SDK 버전 |
 | Git 리포 | `REPO_URL` | Git 리포지토리 주소 |
 | 브랜치 이름 | `DEV_BRANCH_NAME` / `PROD_BRANCH_NAME` | 배포 대상 브랜치 |
 | Fastlane Lane | `DEV_FASTLANE_LANE` / `PROD_FASTLANE_LANE` | Fastlane에서 실행할 lane 이름 |
-| Webhook 서명 | `GITHUB_WEBHOOK_SECRET` | GitHub Webhook 보안 키 |
+| GitHub Action 서명 | `GITHUB_WEBHOOK_SECRET` | GitHub Action 보안 키 |
 | Slack | `SLACK_WEBHOOK_CHANNEL` | Slack Webhook URL |
 
 ### 2. 서버 실행
 
 ```bash
+# 1회 부트스트랩
+make bootstrap
+
 # 로컬 실행
-sh local_run.sh
+make run
 ```
+
+설정 진단:
+
+```bash
+curl http://localhost:8000/diagnostics
+```
+
+`/diagnostics`는 webhook env뿐 아니라 `git`, `fvm`, `ruby`, `bundle`, `pod` 경로와 주요 version fallback env 상태도 함께 보여줍니다.
 
 또는 직접 실행:
 
 ```bash
-pip install -r requirements.txt
-python3 -m src.main
+./venv/bin/uvicorn src.main:app --host 0.0.0.0 --port 8000
 ```
 
 ### 3. 외부 접속 설정 (ngrok)
@@ -80,14 +93,29 @@ python3 -m src.main
 ```bash
 # ngrok 설치 및 실행
 brew install ngrok
-ngrok http 8000
+make tunnel
 ```
 
-GitHub Webhook 설정:
-- Payload URL: `https://xxxx.ngrok-free.app/webhook`
+GitHub Build Action 설정:
+- Payload URL: `https://xxxx.ngrok-free.app/github-action/build`
 - Content type: `application/json`
 - Secret: `.env`의 `GITHUB_WEBHOOK_SECRET`
 - 이벤트: `Pull requests`, `Create (tags)`
+- 기본 정책:
+  - `release/dev* -> develop` 머지 시 `dev`
+  - `x.y.z` 태그 생성 시 `prod`
+
+GitHub Shorebird Action 설정:
+- Payload URL: `https://xxxx.ngrok-free.app/github-action/shorebird`
+- Secret: `.env`의 `GITHUB_WEBHOOK_SECRET`
+- 기본 빌드 대상은 `.env`의 `SHOREBIRD_PATCH_FLAVOR`, `SHOREBIRD_PATCH_PLATFORM`, `SHOREBIRD_PATCH_BRANCH_NAME`
+
+주의:
+- `GITHUB_WEBHOOK_SECRET`이 없으면 해당 `POST /github-action/*` 엔드포인트는 `503`을 반환합니다.
+- 수동 빌드 API와 상태 조회는 GitHub secret 없이도 로컬에서 사용할 수 있습니다.
+- 빌드에 필요한 env가 빠져 있으면 `/build`는 누락 키 목록과 함께 즉시 실패합니다.
+- 저장소를 새로 pull한 뒤 Flutter SDK 버전이 바뀌면, 빌드 전에 Python 오케스트레이터가 `fvm flutter precache --ios`를 반드시 먼저 실행합니다.
+- Python setup이 `pub get`, cache repair, Bundler/gem 준비를 담당하고, shell 스크립트는 실제 플랫폼 빌드 실행 위주로 남겨둡니다.
 
 ## 📁 프로젝트 구조
 
@@ -103,7 +131,8 @@ src/
 │   └── queue_manager.py  # 빌드 큐 관리
 ├── services/             # 비즈니스 로직 서비스
 │   ├── build_service.py  # 빌드 파이프라인 서비스
-│   └── webhook_service.py # GitHub Webhook 서비스
+│   ├── action_service.py # GitHub build / shorebird action 서비스
+│   └── webhook_service.py # GitHub action 호환 alias
 └── utils/                # 유틸리티 함수들
     └── cleanup.py        # 캐시 정리 스케줄러
 ```

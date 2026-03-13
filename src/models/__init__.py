@@ -10,8 +10,10 @@ __all__ = [
     "BuildStatusResponse", 
     "BuildSummary",
     "BuildsResponse",
-    "WebhookResponse",
+    "ActionResponse",
     "ManualBuildResponse",
     "RootResponse",
-    "CleanupResponse"
+    "CleanupResponse",
+    "DiagnosticItem",
+    "DiagnosticsResponse",
 ]
