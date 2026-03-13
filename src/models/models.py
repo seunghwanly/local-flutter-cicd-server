@@ -145,6 +145,83 @@ class ActionResponse(BaseModel):
     build_id: Optional[str] = None
 
 
+class ShorebirdWebhookMetadata(BaseModel):
+    """Shorebird webhook metadata payload."""
+
+    flavor: Optional[str] = Field(
+        default=None,
+        description="빌드 flavor. dev, stg, stage, prd, prod 같은 값을 지원",
+        example="stg",
+    )
+    build_name: Optional[str] = Field(
+        default=None,
+        description="빌드 이름",
+        example="2.2.1",
+    )
+    build_number: Optional[str] = Field(
+        default=None,
+        description="빌드 번호",
+        example="689",
+    )
+
+    model_config = ConfigDict(extra="allow")
+
+
+class ShorebirdWebhookRequest(BaseModel):
+    """GitHub-delivered Shorebird webhook payload for docs and validation."""
+
+    ref_type: str = Field(
+        description="GitHub ref 타입. shorebird webhook은 tag 여야 함",
+        example="tag",
+    )
+    ref: str = Field(
+        description="생성된 태그 이름. build_name fallback으로 사용",
+        example="2.2.1",
+    )
+    payload: Optional[ShorebirdWebhookMetadata] = Field(
+        default=None,
+        description="권장 메타데이터 컨테이너",
+    )
+    inputs: Optional[ShorebirdWebhookMetadata] = Field(
+        default=None,
+        description="대체 메타데이터 컨테이너",
+    )
+    client_payload: Optional[ShorebirdWebhookMetadata] = Field(
+        default=None,
+        description="대체 메타데이터 컨테이너",
+    )
+    flavor: Optional[str] = Field(
+        default=None,
+        description="top-level flavor override",
+        example="prd",
+    )
+    build_name: Optional[str] = Field(
+        default=None,
+        description="top-level build name override",
+        example="2.2.1",
+    )
+    build_number: Optional[str] = Field(
+        default=None,
+        description="top-level build number override",
+        example="689",
+    )
+
+    model_config = ConfigDict(
+        extra="allow",
+        json_schema_extra={
+            "example": {
+                "ref_type": "tag",
+                "ref": "2.2.1",
+                "payload": {
+                    "flavor": "stg",
+                    "build_name": "2.2.1",
+                    "build_number": "689",
+                },
+            }
+        },
+    )
+
+
 class ManualBuildResponse(BaseModel):
     """수동 빌드 응답 모델"""
     status: str

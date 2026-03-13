@@ -2,7 +2,7 @@
 
 from typing import Optional
 
-from fastapi import FastAPI, Request, Header, HTTPException, Form
+from fastapi import FastAPI, Request, Header, HTTPException, Form, Body
 from fastapi.responses import HTMLResponse
 from pathlib import Path
 import os
@@ -11,7 +11,8 @@ from pydantic import ValidationError
 
 from ..models import (
     ActionResponse, BuildRequest, BuildStatusResponse, BuildsResponse,
-    ManualBuildResponse, RootResponse, CleanupResponse, DiagnosticsResponse
+    ManualBuildResponse, RootResponse, CleanupResponse, DiagnosticsResponse,
+    ShorebirdWebhookRequest,
 )
 from ..application import ConfigDiagnostics
 from ..services.build_service import build_service
@@ -134,6 +135,10 @@ def create_app() -> FastAPI:
     @app.post("/github-action/shorebird", response_model=ActionResponse, tags=["GitHub Actions"])
     async def handle_github_shorebird_action(
         request: Request,
+        webhook_payload: ShorebirdWebhookRequest = Body(
+            ...,
+            description="GitHub가 전달하는 Shorebird webhook payload",
+        ),
         x_hub_signature_256: str = Header(None, description="GitHub webhook signature"),
         x_hub_signature: str = Header(None, description="GitHub webhook signature (sha1)"),
         x_github_event: str = Header(None, description="GitHub event type"),
@@ -155,8 +160,11 @@ def create_app() -> FastAPI:
         if not shorebird_action_service.verify_signature(body, x_hub_signature_256, x_hub_signature):
             raise HTTPException(status_code=403, detail="Invalid signature")
 
-        payload = await request.json()
-        return shorebird_action_service.handle(payload, x_github_event, x_github_delivery)
+        return shorebird_action_service.handle(
+            webhook_payload.model_dump(exclude_none=True),
+            x_github_event,
+            x_github_delivery,
+        )
 
     @app.post("/build/shorebird", response_model=ManualBuildResponse, tags=["Manual Build"])
     async def manual_shorebird_build(
