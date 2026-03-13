@@ -90,8 +90,8 @@ fi
 # CocoaPods 버전 확인
 echo "📦 CocoaPods version:"
 if [ -n "$COCOAPODS_VERSION" ]; then
-    echo "📦 Executing CocoaPods via: pod _$COCOAPODS_VERSION_"
-    pod "_$COCOAPODS_VERSION_" --version
+    echo "📦 Executing CocoaPods via: pod _${COCOAPODS_VERSION}_"
+    pod "_${COCOAPODS_VERSION}_" --version
 elif [ "$USE_BUNDLER" = true ]; then
     echo "📦 Executing CocoaPods via: bundle exec pod"
     bundle exec pod --version
@@ -103,11 +103,11 @@ fi
 # pod install 실행
 echo "📚 Running pod install..."
 if [ -n "$COCOAPODS_VERSION" ]; then
-    if pod "_$COCOAPODS_VERSION_" install; then
+    if pod "_${COCOAPODS_VERSION}_" install; then
         true
     else
         echo "⚠️ pod install failed, retrying with --repo-update"
-        pod "_$COCOAPODS_VERSION_" install --repo-update
+        pod "_${COCOAPODS_VERSION}_" install --repo-update
     fi
 elif [ "$USE_BUNDLER" = true ]; then
     if bundle exec pod install; then
