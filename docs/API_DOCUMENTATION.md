@@ -162,7 +162,7 @@ GitHub에서 전송되는 일반 build action 이벤트를 처리합니다.
 - `X-GitHub-Event`: GitHub 이벤트 타입
 
 **지원하는 이벤트:**
-- **PR 머지**: develop 브랜치에 release/dev* 패턴의 PR이 머지될 때 dev 빌드 트리거
+- **PR 머지**: release/dev* 브랜치로 머지될 때 dev 빌드 트리거
 - **태그 생성**: x.y.z 형식의 태그가 생성될 때 prod 빌드 트리거
 
 ### 6. GitHub Shorebird Action
