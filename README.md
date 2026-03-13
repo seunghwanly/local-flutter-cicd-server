@@ -108,11 +108,13 @@ GitHub Build Action 설정:
 GitHub Shorebird Action 설정:
 - Payload URL: `https://xxxx.ngrok-free.app/github-action/shorebird`
 - Secret: `.env`의 `GITHUB_WEBHOOK_SECRET`
+- prod 릴리즈 태그 생성 시에만 트리거됩니다.
 - 기본 빌드 대상은 `.env`의 `SHOREBIRD_PATCH_FLAVOR`, `SHOREBIRD_PATCH_PLATFORM`, `SHOREBIRD_PATCH_BRANCH_NAME`
 
 주의:
 - `GITHUB_WEBHOOK_SECRET`이 없으면 해당 `POST /github-action/*` 엔드포인트는 `503`을 반환합니다.
 - 수동 빌드 API와 상태 조회는 GitHub secret 없이도 로컬에서 사용할 수 있습니다.
+- Shorebird patch를 수동 실행하려면 `POST /build/shorebird`를 사용합니다.
 - 빌드에 필요한 env가 빠져 있으면 `/build`는 누락 키 목록과 함께 즉시 실패합니다.
 - 저장소를 새로 pull한 뒤 Flutter SDK 버전이 바뀌면, 빌드 전에 Python 오케스트레이터가 `fvm flutter precache --ios`를 반드시 먼저 실행합니다.
 - Python setup이 `pub get`, cache repair, Bundler/gem 준비를 담당하고, shell 스크립트는 실제 플랫폼 빌드 실행 위주로 남겨둡니다.

@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import os
+import re
 from typing import Any, Dict, Optional
 
 from ..application import WebhookPolicy
@@ -68,10 +69,11 @@ class GitHubActionService:
 
 
 class ShorebirdActionService:
-    """Translate GitHub-delivered Shorebird patch events into build triggers."""
+    """Translate GitHub-delivered Shorebird tag events into build triggers."""
 
     def __init__(self) -> None:
         self.verifier = HmacVerifier("GITHUB_WEBHOOK_SECRET")
+        self.prod_tag_pattern = os.environ.get("WEBHOOK_PROD_TAG_PATTERN", r"^\d+\.\d+\.\d+$")
 
     def verify_signature(
         self,
@@ -86,15 +88,16 @@ class ShorebirdActionService:
         return False
 
     def handle(self, payload: Dict[str, Any], event_type: Optional[str], delivery_id: Optional[str]) -> Dict[str, str]:
+        if not self._is_supported_tag_event(payload, event_type):
+            return {"status": "ignored"}
+
         build_id = build_service.start_build_pipeline(
-            flavor=self._payload_value(payload, "flavor") or os.environ.get("SHOREBIRD_PATCH_FLAVOR", "prod"),
-            platform=self._payload_value(payload, "platform") or os.environ.get("SHOREBIRD_PATCH_PLATFORM", "all"),
+            flavor=os.environ.get("SHOREBIRD_PATCH_FLAVOR", "prod"),
+            platform=os.environ.get("SHOREBIRD_PATCH_PLATFORM", "all"),
             trigger_source="shorebird",
             trigger_event_id=delivery_id or event_type,
-            build_name=self._payload_value(payload, "release_version", "releaseVersion", "version"),
-            build_number=self._payload_value(payload, "patch_number", "patchNumber", "number"),
-            branch_name=self._payload_value(payload, "branch_name", "branchName")
-            or os.environ.get("SHOREBIRD_PATCH_BRANCH_NAME"),
+            build_name=self._payload_value(payload, "ref"),
+            branch_name=os.environ.get("SHOREBIRD_PATCH_BRANCH_NAME"),
         )
         return {"status": "ok", "build_id": build_id}
 
@@ -104,6 +107,14 @@ class ShorebirdActionService:
             if value is not None:
                 return str(value)
         return None
+
+    def _is_supported_tag_event(self, payload: Dict[str, Any], event_type: Optional[str]) -> bool:
+        if event_type != "create":
+            return False
+        if payload.get("ref_type") != "tag":
+            return False
+        tag_name = self._payload_value(payload, "ref") or ""
+        return bool(re.match(self.prod_tag_pattern, tag_name))
 
 
 github_action_service = GitHubActionService()
