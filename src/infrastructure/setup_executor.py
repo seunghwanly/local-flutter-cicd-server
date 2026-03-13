@@ -112,7 +112,7 @@ class SetupExecutor:
         log,
     ) -> None:
         pubspec = repo_path / "pubspec.yaml"
-        has_melos = (repo_path / "melos.yaml").exists() or (repo_path / "pubspec.yaml").exists()
+        has_melos = (repo_path / "melos.yaml").exists()
         if pubspec.exists():
             git_urls = self._extract_git_dependency_urls(pubspec)
             if git_urls:
@@ -146,10 +146,10 @@ class SetupExecutor:
             if line.strip():
                 log(f"[{build_id}][SETUP] {line.strip()}")
 
-        retry_commands = [
-            ["fvm", "exec", "melos", "run", "pub"],
-            ["fvm", "flutter", "pub", "get", "--verbose"],
-        ]
+        retry_commands = []
+        if has_melos:
+            retry_commands.append(["fvm", "exec", "melos", "run", "pub"])
+        retry_commands.append(["fvm", "flutter", "pub", "get", "--verbose"])
         for command in retry_commands:
             result = self.command_runner.run(command, env=env, cwd=str(repo_path), check=False)
             for line in result.stdout.splitlines():

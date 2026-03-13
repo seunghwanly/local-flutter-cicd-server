@@ -65,7 +65,8 @@ class RepositoryWorkspaceManager:
         self._run_fvm_use(build_id, repo_path, env, resolved_version, log)
 
         precache_ran = False
-        if version_changed:
+        should_precache_ios = platform in {"all", "ios"}
+        if version_changed and should_precache_ios:
             self._run_flutter_precache(build_id, repo_path, env, resolved_version, platform, log)
             precache_ran = True
 
@@ -82,13 +83,15 @@ class RepositoryWorkspaceManager:
         env: Dict[str, str],
         log,
     ) -> None:
-        if not (repo_path / ".git").exists():
+        fresh_clone = not (repo_path / ".git").exists()
+        if fresh_clone:
             log(f"[{build_id}] 📦 Cloning repository into isolated workspace")
             self.command_runner.run_checked(
-                ["git", "clone", repo_url, str(repo_path)],
+                ["git", "clone", "--depth", "1", "--single-branch", "--branch", branch_name, repo_url, str(repo_path)],
                 env=env,
                 cwd=str(repo_path.parent),
             )
+            return
 
         self.command_runner.run_checked(["git", "remote", "set-url", "origin", repo_url], env=env, cwd=str(repo_path))
 

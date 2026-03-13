@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from src.infrastructure.command_runner import CompletedCommand
 from src.infrastructure.repository_workspace import RepositoryWorkspaceManager
 
 
@@ -37,6 +38,19 @@ class CapturingRepositoryWorkspaceManager(RepositoryWorkspaceManager):
         self.calls.append(("write_version", flutter_version))
 
 
+class FakeCommandRunner:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, ...]] = []
+
+    def run_checked(self, command, *, env, cwd):
+        self.calls.append(tuple(command))
+        return CompletedCommand(args=list(command), returncode=0, stdout="")
+
+    def run(self, command, *, env, cwd, check=True):
+        self.calls.append(tuple(command))
+        return CompletedCommand(args=list(command), returncode=0, stdout="")
+
+
 class RepositoryWorkspaceManagerTests(unittest.TestCase):
     def test_prepare_runs_precache_when_flutter_version_changes(self) -> None:
         manager = CapturingRepositoryWorkspaceManager()
@@ -64,6 +78,64 @@ class RepositoryWorkspaceManagerTests(unittest.TestCase):
         self.assertIn(("fvm_use", "3.24.0"), manager.calls)
         self.assertIn(("precache", "3.24.0:ios"), manager.calls)
         self.assertEqual("3.24.0", manager.written_version)
+
+    def test_prepare_skips_ios_precache_for_android_only_build(self) -> None:
+        manager = CapturingRepositoryWorkspaceManager()
+        manager.previous_version = "3.22.0"
+
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_dir = Path(tmp) / "repo"
+            repo_dir.mkdir()
+            (repo_dir / ".fvmrc").write_text('{"flutter":"3.24.0"}', encoding="utf-8")
+
+            prepared = manager.prepare(
+                build_id="build-android",
+                repo_url="git@github.com:org/repo.git",
+                branch_name="develop",
+                repo_dir=str(repo_dir),
+                env={},
+                requested_flutter_version=None,
+                platform="android",
+                log=lambda _: None,
+            )
+
+        self.assertEqual("3.24.0", prepared.flutter_version)
+        self.assertFalse(prepared.precache_ran)
+        self.assertNotIn(("precache", "3.24.0:android"), manager.calls)
+
+    def test_sync_repository_uses_shallow_clone_for_fresh_workspace(self) -> None:
+        runner = FakeCommandRunner()
+        manager = RepositoryWorkspaceManager(runner)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_path = Path(tmp) / "repo"
+            repo_path.mkdir()
+
+            manager._sync_repository(
+                build_id="build-1",
+                repo_url="git@github.com:org/repo.git",
+                branch_name="main",
+                repo_path=repo_path,
+                env={},
+                log=lambda _: None,
+            )
+
+        self.assertEqual(
+            [
+                (
+                    "git",
+                    "clone",
+                    "--depth",
+                    "1",
+                    "--single-branch",
+                    "--branch",
+                    "main",
+                    "git@github.com:org/repo.git",
+                    str(repo_path),
+                )
+            ],
+            runner.calls,
+        )
 
     def test_resolve_flutter_version_prefers_tool_versions_then_env_fallback(self) -> None:
         manager = CapturingRepositoryWorkspaceManager()
