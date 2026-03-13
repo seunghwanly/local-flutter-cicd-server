@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Flutter CI/CD Dashboard</title>
+    <title>Flutter CI/CD 대시보드</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
         :root {
@@ -530,42 +530,42 @@
             <div class="header-controls">
                 <a href="/diagnostics" target="_blank" class="btn-diagnostics">
                     <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"></path></svg>
-                    Diagnostics
+                    시스템 진단
                 </a>
                 <div class="header-status">
                     <div class="pulse-dot" id="connection-dot"></div>
-                    <span id="connection-text">Connecting...</span>
+                    <span id="connection-text">연결 중...</span>
                 </div>
             </div>
         </header>
 
         <section class="hero-grid">
             <div class="panel">
-                <h2 class="hero-title">Pipeline Snapshot</h2>
-                <p class="hero-copy">Request validation, repository sync, Flutter setup, toolchain prep, and store build progress are summarized here.</p>
+                <h2 class="hero-title">파이프라인 요약</h2>
+                <p class="hero-copy">요청 검증, 저장소 동기화, SDK 환경 설정, 툴체인 준비 및 앱 빌드 진행 상태가 여기에 요약됩니다.</p>
                 <div class="metrics">
                     <div class="metric">
-                        <div class="metric-label">Total</div>
+                        <div class="metric-label">전체 빌드</div>
                         <div class="metric-value" id="metric-total">0</div>
                     </div>
                     <div class="metric">
-                        <div class="metric-label">Running</div>
+                        <div class="metric-label">실행 중</div>
                         <div class="metric-value" id="metric-running">0</div>
                     </div>
                     <div class="metric">
-                        <div class="metric-label">Completed</div>
+                        <div class="metric-label">완료됨</div>
                         <div class="metric-value" id="metric-completed">0</div>
                     </div>
                     <div class="metric">
-                        <div class="metric-label">Failed</div>
+                        <div class="metric-label">실패함</div>
                         <div class="metric-value" id="metric-failed">0</div>
                     </div>
                 </div>
             </div>
             <div class="panel">
-                <h2 class="hero-title">Runtime Diagnostics</h2>
+                <h2 class="hero-title">런타임 진단 상태</h2>
                 <div class="diagnostic-list" id="diagnostic-list">
-                    <div class="diagnostic-item">Loading diagnostics...</div>
+                    <div class="diagnostic-item">진단 정보를 불러오는 중...</div>
                 </div>
             </div>
         </section>
@@ -573,7 +573,7 @@
         <div id="builds-grid" class="grid">
             <div class="empty-state">
                 <div class="loader"></div>
-                <p style="margin-top: 16px;">Loading builds...</p>
+                <p style="margin-top: 16px;">빌드 목록을 불러오는 중...</p>
             </div>
         </div>
     </div>
@@ -583,19 +583,19 @@
         <div class="modal-content" onclick="event.stopPropagation()">
             <div class="modal-header">
                 <h3 class="modal-title">
-                    <span id="modal-build-id">Build Logs</span>
+                    <span id="modal-build-id">빌드 로그</span>
                     <span id="modal-status-badge" class="status-badge"></span>
                 </h3>
                 <button class="close-btn" onclick="closeModal()">&times;</button>
             </div>
             <div class="modal-body">
                 <div class="info-row" style="margin-bottom: 20px;">
-                    <span class="info-label">Started:</span>
+                    <span class="info-label">시작 시각:</span>
                     <span class="info-value" id="modal-started-at"></span>
                 </div>
                 <div class="stage-list" id="modal-stages"></div>
                 <div class="log-container" id="modal-logs">
-                    <div class="loader"></div> Loading logs...
+                    <div class="loader"></div> 로그를 불러오는 중...
                 </div>
             </div>
         </div>
@@ -605,7 +605,7 @@
         const API_BASE = window.location.protocol === 'file:' ? 'http://127.0.0.1:8000' : window.location.origin;
 
         const formatTime = (isoString) => {
-            if (!isoString) return 'Unknown';
+            if (!isoString) return '알 수 없음';
             const date = new Date(isoString);
             return date.toLocaleString(undefined, {
                 month: 'short', day: 'numeric', 
@@ -624,8 +624,13 @@
         };
 
         const getStatusLabel = (status) => {
-            if (!status) return 'Unknown';
-            if (status.toLowerCase() === 'running') return 'Running...';
+            if (!status) return '알 수 없음';
+            const s = status.toLowerCase();
+            if (s === 'running') return '실행 중';
+            if (s === 'completed' || s === 'success') return '성공';
+            if (s === 'failed' || s === 'error') return '실패';
+            if (s === 'canceled') return '취소됨';
+            if (s === 'pending') return '대기 중';
             return status;
         };
 
@@ -695,22 +700,22 @@
                     <div class="diagnostic-item">
                         <div class="diagnostic-top">
                             <div class="diagnostic-name">${humanizeStage(key)}</div>
-                            <span class="status-badge ${item.ready ? 'status-success' : 'status-failed'}">${item.ready ? 'Ready' : 'Needs Attention'}</span>
+                            <span class="status-badge ${item.ready ? 'status-success' : 'status-failed'}">${item.ready ? '정상' : '확인 필요'}</span>
                         </div>
                         <div class="diagnostic-meta">
-                            ${item.missing?.length ? `Missing: ${item.missing.join(', ')}` : 'All required checks passed.'}
+                            ${item.missing?.length ? `누락됨: ${item.missing.join(', ')}` : '필수 점검 항목을 모두 통과했습니다.'}
                         </div>
                     </div>
                 `).join('');
-                document.getElementById('diagnostic-list').innerHTML = html || '<div class="diagnostic-item">No diagnostics available.</div>';
+                document.getElementById('diagnostic-list').innerHTML = html || '<div class="diagnostic-item">진단 정보가 없습니다.</div>';
             } catch (error) {
-                document.getElementById('diagnostic-list').innerHTML = '<div class="diagnostic-item">Failed to load diagnostics.</div>';
+                document.getElementById('diagnostic-list').innerHTML = '<div class="diagnostic-item">진단 정보를 불러오지 못했습니다.</div>';
             }
         };
 
         const fetchBuilds = async () => {
             try {
-                setConnectionState('loading', 'Syncing...');
+                setConnectionState('loading', '동기화 중...');
                 const response = await fetch(`${API_BASE}/builds`);
                 if (!response.ok) throw new Error('Network response was not ok');
                 
@@ -719,13 +724,13 @@
                 updateMetrics(builds);
                 
                 const grid = document.getElementById('builds-grid');
-                setConnectionState('live', 'Live');
+                setConnectionState('live', '동기화 연결됨');
                 
                 if (builds.length === 0) {
                     grid.innerHTML = `
                         <div class="empty-state">
-                            <h3>No builds found</h3>
-                            <p style="margin-top: 8px;">Trigger a build via webhook or API.</p>
+                            <h3>빌드 내역이 없습니다</h3>
+                            <p style="margin-top: 8px;">트리거(API/Webhook) 요청 시 빌드가 시작됩니다.</p>
                         </div>
                     `;
                 } else {
@@ -742,14 +747,14 @@
                                 </div>
                                 
                                 <div class="info-row">
-                                    <span class="info-label">Branch</span>
+                                    <span class="info-label">브랜치</span>
                                     <span class="info-value">
                                         <span class="tag">🌿 ${build.branch_name || 'unknown'}</span>
                                     </span>
                                 </div>
                                 
                                 <div class="info-row">
-                                    <span class="info-label">Target</span>
+                                    <span class="info-label">빌드 대상</span>
                                     <span class="info-value">
                                         <span class="tag">${build.flavor?.toUpperCase() || 'DEV'}</span>
                                         <span class="tag">${build.platform?.toUpperCase() || 'ALL'}</span>
@@ -765,13 +770,13 @@
 
                                 ${(build.stages && build.stages.length) ? `
                                 <div class="info-row">
-                                    <span class="info-label">Stage</span>
-                                    <span class="info-value">${humanizeStage(build.stages.find(stage => stage.status === 'running')?.name || build.stages[build.stages.length - 1]?.name || 'pending')}</span>
+                                    <span class="info-label">진행 상황</span>
+                                    <span class="info-value">${humanizeStage(build.stages.find(stage => stage.status === 'running')?.name || build.stages[build.stages.length - 1]?.name || '대기 중')}</span>
                                 </div>
                                 ` : ''}
 
                                 <div class="time">
-                                    Started: ${formatTime(build.started_at)}
+                                    요청 시각: ${formatTime(build.started_at)}
                                 </div>
                             </div>
                         `;
@@ -785,7 +790,7 @@
                 }
             } catch (error) {
                 console.error('Error fetching builds:', error);
-                setConnectionState('error', 'Disconnected');
+                setConnectionState('error', '연결 끊김 (서버와 통신 실패)');
             }
         };
 
@@ -818,10 +823,10 @@
                             <div class="stage-name">${humanizeStage(stage.name)}</div>
                             <span class="status-badge ${getStatusClass(stage.status)}">${getStatusLabel(stage.status)}</span>
                         </div>
-                        <div class="stage-message">${escapeHtml(stage.message || 'Waiting')}</div>
+                        <div class="stage-message">${escapeHtml(stage.message || '대기 중')}</div>
                     </div>
                 `).join('')
-                : '<div class="stage-item">No stage timeline available.</div>';
+                : '<div class="stage-item">현재 실행된 파이프라인 스테이지가 없습니다.</div>';
             
             const logContainer = document.getElementById('modal-logs');
             if (data.logs && data.logs.length > 0) {
@@ -833,7 +838,7 @@
                     logContainer.scrollTop = logContainer.scrollHeight;
                 }
             } else {
-                logContainer.innerHTML = '<div>No logs available yet.</div>';
+                logContainer.innerHTML = '<div>아직 기록된 로그가 없습니다.</div>';
             }
 
             if (data.status !== 'running' && data.status !== 'in_progress' && data.status !== 'pending') {
@@ -849,11 +854,11 @@
             const overlay = document.getElementById('log-modal');
             const buildSummary = currentBuilds[buildId] || {};
             
-            document.getElementById('modal-build-id').innerText = `Build #${buildId.substring(0, 8)}`;
+            document.getElementById('modal-build-id').innerText = `빌드 #${buildId.substring(0, 8)}`;
             document.getElementById('modal-status-badge').className = `status-badge ${getStatusClass(buildSummary.status)}`;
             document.getElementById('modal-status-badge').innerText = getStatusLabel(buildSummary.status);
             document.getElementById('modal-started-at').innerText = formatTime(buildSummary.started_at);
-            document.getElementById('modal-logs').innerHTML = '<div class="loader"></div> Loading logs...';
+            document.getElementById('modal-logs').innerHTML = '<div class="loader"></div> 로그를 불러오는 중...';
             
             overlay.classList.add('active');
             

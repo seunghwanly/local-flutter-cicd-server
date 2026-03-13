@@ -23,6 +23,8 @@ class BuildStatusPresenterTests(unittest.TestCase):
         self.assertNotIn("setup", detail["processes"])
         self.assertTrue(any(stage["name"] == "request_validated" for stage in detail["stages"]))
         self.assertEqual("/tmp/build.log", detail["log_file_path"])
+        self.assertEqual("manual", detail["trigger_source"])
+        self.assertIsNone(detail["trigger_event_id"])
 
 
 if __name__ == "__main__":

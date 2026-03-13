@@ -1,10 +1,10 @@
 # 🚀 Flutter CI/CD Server
 
-GitHub Webhook을 수신하고 Flutter 프로젝트를 자동 빌드하는 FastAPI 기반 CI/CD 서버입니다.
+수동 빌드 요청과 GitHub action 이벤트를 수신해 Flutter 프로젝트를 자동 빌드하는 FastAPI 기반 CI/CD 서버입니다.
 
 ## 📦 지원 기능
 
-- **FastAPI 기반 Webhook 수신 서버** - GitHub 이벤트 자동 처리
+- **FastAPI 기반 GitHub Action 수신 서버** - 일반 빌드와 Shorebird patch 이벤트 처리
 - **Flutter SDK 자동 설치** - 버전별 격리된 환경 지원
 - **Python 오케스트레이션 우선** - Git sync, 브랜치 정렬, Flutter 버전 해석을 Python이 담당
 - **Android / iOS 빌드 환경** - Ruby + Fastlane 포함
@@ -96,15 +96,25 @@ brew install ngrok
 make tunnel
 ```
 
-GitHub Webhook 설정:
-- Payload URL: `https://xxxx.ngrok-free.app/webhook`
+GitHub Build Action 설정:
+- Payload URL: `https://xxxx.ngrok-free.app/github-action/build`
 - Content type: `application/json`
 - Secret: `.env`의 `GITHUB_WEBHOOK_SECRET`
 - 이벤트: `Pull requests`, `Create (tags)`
+- 기본 정책:
+  - `release-dev-v* -> develop` 머지 시 `dev`
+  - `develop -> main` 머지 시 `prod`
+  - `x.y.z` 태그 생성 시 `prod`
+
+GitHub Shorebird Action 설정:
+- Payload URL: `https://xxxx.ngrok-free.app/github-action/shorebird`
+- Secret: `.env`의 `GITHUB_WEBHOOK_SECRET`
+- 기본 빌드 대상은 `.env`의 `SHOREBIRD_PATCH_FLAVOR`, `SHOREBIRD_PATCH_PLATFORM`, `SHOREBIRD_PATCH_BRANCH_NAME`
 
 주의:
-- `GITHUB_WEBHOOK_SECRET`이 설정되지 않으면 `/webhook`은 `503`을 반환합니다.
-- 수동 빌드 API와 상태 조회는 webhook secret 없이도 로컬에서 사용할 수 있습니다.
+- `GITHUB_WEBHOOK_SECRET`이 없으면 해당 `POST /github-action/*` 엔드포인트는 `503`을 반환합니다.
+- 기존 `/webhook`은 호환용 alias로 유지됩니다.
+- 수동 빌드 API와 상태 조회는 GitHub secret 없이도 로컬에서 사용할 수 있습니다.
 - 빌드에 필요한 env가 빠져 있으면 `/build`는 누락 키 목록과 함께 즉시 실패합니다.
 - 저장소를 새로 pull한 뒤 Flutter SDK 버전이 바뀌면, 빌드 전에 Python 오케스트레이터가 `fvm flutter precache --ios`를 반드시 먼저 실행합니다.
 - Python setup이 `pub get`, cache repair, Bundler/gem 준비를 담당하고, shell 스크립트는 실제 플랫폼 빌드 실행 위주로 남겨둡니다.
@@ -123,7 +133,8 @@ src/
 │   └── queue_manager.py  # 빌드 큐 관리
 ├── services/             # 비즈니스 로직 서비스
 │   ├── build_service.py  # 빌드 파이프라인 서비스
-│   └── webhook_service.py # GitHub Webhook 서비스
+│   ├── action_service.py # GitHub build / shorebird action 서비스
+│   └── webhook_service.py # GitHub action 호환 alias
 └── utils/                # 유틸리티 함수들
     └── cleanup.py        # 캐시 정리 스케줄러
 ```

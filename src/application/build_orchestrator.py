@@ -115,6 +115,7 @@ class BuildOrchestrator:
 
             if not self._run_build_scripts(job, env):
                 job.status = BuildStatus.FAILED
+                self.repository.save(job)
                 return
 
             job.status = BuildStatus.COMPLETED
@@ -122,10 +123,12 @@ class BuildOrchestrator:
                 job,
                 f"[{job.build_id}] 🎉 Build pipeline completed at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
             )
+            self.repository.save(job)
         except Exception as exc:
             job.status = BuildStatus.FAILED
             self._log(job, f"[{job.build_id}] 💥 Build pipeline failed: {exc}")
             logger.exception("Build pipeline failed for %s", job.build_id)
+            self.repository.save(job)
 
     def _run_setup_script(self, job: BuildJob, env: Dict[str, str]) -> bool:
         self._log(job, f"[{job.build_id}] 📦 Running setup...")
@@ -143,6 +146,7 @@ class BuildOrchestrator:
             job.mark_stage_failed("dependencies_installed", str(exc))
             self._log(job, f"[{job.build_id}] ❌ Setup failed: {exc}")
             job.status = BuildStatus.FAILED
+            self.repository.save(job)
             return False
 
     def _run_build_scripts(self, job: BuildJob, env: Dict[str, str]) -> bool:

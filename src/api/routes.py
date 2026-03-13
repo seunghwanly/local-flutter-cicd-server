@@ -10,12 +10,12 @@ import threading
 from pydantic import ValidationError
 
 from ..models import (
-    BuildRequest, BuildStatusResponse, BuildsResponse, WebhookResponse,
+    ActionResponse, BuildRequest, BuildStatusResponse, BuildsResponse,
     ManualBuildResponse, RootResponse, CleanupResponse, DiagnosticsResponse
 )
 from ..application import ConfigDiagnostics
 from ..services.build_service import build_service
-from ..services.webhook_service import webhook_service
+from ..services.action_service import github_action_service, shorebird_action_service
 from ..core.config import get_cache_cleanup_days
 from ..utils.cleanup import start_cleanup_scheduler, manual_cleanup
 
@@ -95,16 +95,18 @@ def create_app() -> FastAPI:
         builds = build_service.list_builds()
         return {"builds": builds}
     
-    @app.post("/webhook", response_model=WebhookResponse, tags=["GitHub Webhook"])
-    async def handle_webhook(
+    @app.post("/github-action/build", response_model=ActionResponse, tags=["GitHub Actions"])
+    async def handle_github_build_action(
         request: Request,
         x_hub_signature_256: str = Header(None, description="GitHub webhook signature"),
-        x_github_event: str = Header(None, description="GitHub event type")
+        x_hub_signature: str = Header(None, description="GitHub webhook signature (sha1)"),
+        x_github_event: str = Header(None, description="GitHub event type"),
+        x_github_delivery: str = Header(None, description="GitHub delivery id"),
     ):
         """
-        GitHub Webhook 처리
+        GitHub build action 처리
         
-        GitHub에서 전송되는 webhook 이벤트를 처리합니다.
+        GitHub에서 전송되는 일반 build action 이벤트를 처리합니다.
         
         지원하는 이벤트:
         - PR이 develop 브랜치에 머지될 때 (dev 빌드 트리거)
@@ -113,22 +115,66 @@ def create_app() -> FastAPI:
         참고:
         - stage 빌드는 자동 트리거가 아닌 수동 트리거로 사용합니다.
         """
-        webhook_diagnostics = diagnostics.get_webhook_diagnostics()
-        if not webhook_diagnostics.ready:
+        action_diagnostics = diagnostics.get_github_action_diagnostics()
+        if not action_diagnostics.ready:
             raise HTTPException(
                 status_code=503,
-                detail=f"Webhook is not configured. Missing: {', '.join(webhook_diagnostics.missing)}",
+                detail=f"GitHub action is not configured. Missing: {', '.join(action_diagnostics.missing)}",
             )
 
         body = await request.body()
 
-        if not webhook_service.verify_signature(body, x_hub_signature_256):
+        if not github_action_service.verify_signature(body, x_hub_signature_256, x_hub_signature):
             raise HTTPException(status_code=403, detail="Invalid signature")
 
         payload = await request.json()
-        result = webhook_service.handle_webhook(payload, x_github_event)
+        result = github_action_service.handle(payload, x_github_event, x_github_delivery)
         return result
-    
+
+    @app.post("/webhook", response_model=ActionResponse, tags=["GitHub Webhook"])
+    async def handle_webhook_alias(
+        request: Request,
+        x_hub_signature_256: str = Header(None, description="GitHub webhook signature"),
+        x_hub_signature: str = Header(None, description="GitHub webhook signature (sha1)"),
+        x_github_event: str = Header(None, description="GitHub event type"),
+        x_github_delivery: str = Header(None, description="GitHub delivery id"),
+    ):
+        """Deprecated GitHub webhook alias kept for compatibility."""
+        return await handle_github_build_action(
+            request=request,
+            x_hub_signature_256=x_hub_signature_256,
+            x_hub_signature=x_hub_signature,
+            x_github_event=x_github_event,
+            x_github_delivery=x_github_delivery,
+        )
+
+    @app.post("/github-action/shorebird", response_model=ActionResponse, tags=["GitHub Actions"])
+    async def handle_github_shorebird_action(
+        request: Request,
+        x_hub_signature_256: str = Header(None, description="GitHub webhook signature"),
+        x_hub_signature: str = Header(None, description="GitHub webhook signature (sha1)"),
+        x_github_event: str = Header(None, description="GitHub event type"),
+        x_github_delivery: str = Header(None, description="GitHub delivery id"),
+    ):
+        """
+        GitHub Shorebird action 처리
+
+        GitHub가 전달한 Shorebird patch 이벤트를 공통 빌드 파이프라인으로 전달합니다.
+        """
+        action_diagnostics = diagnostics.get_shorebird_action_diagnostics()
+        if not action_diagnostics.ready:
+            raise HTTPException(
+                status_code=503,
+                detail=f"Shorebird action is not configured. Missing: {', '.join(action_diagnostics.missing)}",
+            )
+
+        body = await request.body()
+        if not shorebird_action_service.verify_signature(body, x_hub_signature_256, x_hub_signature):
+            raise HTTPException(status_code=403, detail="Invalid signature")
+
+        payload = await request.json()
+        return shorebird_action_service.handle(payload, x_github_event, x_github_delivery)
+
     @app.post("/build", response_model=ManualBuildResponse, tags=["Manual Build"])
     async def manual_build(
         flavor: str = Form("dev", description="flavor 설정: dev, stage, prod"),
@@ -175,6 +221,8 @@ def create_app() -> FastAPI:
             build_id = build_service.start_build_pipeline(
                 request_model.flavor,
                 request_model.platform,
+                "manual",
+                None,
                 request_model.build_name,
                 request_model.build_number,
                 request_model.branch_name,

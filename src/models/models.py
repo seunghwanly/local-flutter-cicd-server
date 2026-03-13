@@ -96,6 +96,8 @@ class BuildStatusResponse(BaseModel):
     started_at: str
     flavor: str
     platform: str
+    trigger_source: str = "manual"
+    trigger_event_id: Optional[str] = None
     flutter_sdk_version: Optional[str] = None
     resolved_flutter_sdk_version: Optional[str] = None
     gradle_version: Optional[str] = None
@@ -119,6 +121,8 @@ class BuildSummary(BaseModel):
     started_at: str
     flavor: str
     platform: str
+    trigger_source: str = "manual"
+    trigger_event_id: Optional[str] = None
     flutter_sdk_version: Optional[str] = None
     resolved_flutter_sdk_version: Optional[str] = None
     gradle_version: Optional[str] = None
@@ -135,8 +139,8 @@ class BuildsResponse(BaseModel):
     builds: List[BuildSummary]
 
 
-class WebhookResponse(BaseModel):
-    """Webhook 응답 모델"""
+class ActionResponse(BaseModel):
+    """외부 action 트리거 응답 모델"""
     status: str
     build_id: Optional[str] = None
 

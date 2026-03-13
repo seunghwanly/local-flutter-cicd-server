@@ -37,6 +37,8 @@ class BuildService:
         self,
         flavor: str,
         platform: str,
+        trigger_source: str = "manual",
+        trigger_event_id: str = None,
         build_name: str = None,
         build_number: str = None,
         branch_name: str = None,
@@ -48,6 +50,8 @@ class BuildService:
         request = BuildRequestData(
             flavor=flavor,
             platform=platform,
+            trigger_source=trigger_source,
+            trigger_event_id=trigger_event_id,
             build_name=build_name,
             build_number=build_number,
             branch_name=branch_name,

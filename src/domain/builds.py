@@ -33,6 +33,8 @@ class BuildRequestData:
 
     flavor: str
     platform: str
+    trigger_source: str = "manual"
+    trigger_event_id: Optional[str] = None
     build_name: Optional[str] = None
     build_number: Optional[str] = None
     branch_name: Optional[str] = None
@@ -73,6 +75,8 @@ class BuildJob:
     platform: str
     branch_name: str
     queue_key: str
+    trigger_source: str = "manual"
+    trigger_event_id: Optional[str] = None
     flutter_sdk_version: Optional[str] = None
     gradle_version: Optional[str] = None
     cocoapods_version: Optional[str] = None
@@ -116,6 +120,8 @@ class BuildJob:
             platform=request.platform,
             branch_name=branch_name,
             queue_key=queue_key,
+            trigger_source=request.trigger_source,
+            trigger_event_id=request.trigger_event_id,
             flutter_sdk_version=request.flutter_sdk_version,
             gradle_version=request.gradle_version,
             cocoapods_version=request.cocoapods_version,
@@ -147,3 +153,87 @@ class BuildJob:
         stage.status = StageStatus.FAILED
         stage.message = message
         stage.completed_at = datetime.now().isoformat()
+
+    def to_dict(self) -> Dict[str, Any]:
+        with self.lock:
+            return {
+                "build_id": self.build_id,
+                "started_at": self.started_at,
+                "flavor": self.flavor,
+                "platform": self.platform,
+                "branch_name": self.branch_name,
+                "queue_key": self.queue_key,
+                "trigger_source": self.trigger_source,
+                "trigger_event_id": self.trigger_event_id,
+                "flutter_sdk_version": self.flutter_sdk_version,
+                "gradle_version": self.gradle_version,
+                "cocoapods_version": self.cocoapods_version,
+                "fastlane_version": self.fastlane_version,
+                "build_name": self.build_name,
+                "build_number": self.build_number,
+                "resolved_flutter_sdk_version": self.resolved_flutter_sdk_version,
+                "status": self.status.value,
+                "logs": list(self.logs),
+                "progress": {
+                    k: {
+                        "current_step": v.current_step,
+                        "percentage": v.percentage,
+                        "current_message": v.current_message,
+                        "steps_completed": list(v.steps_completed),
+                    }
+                    for k, v in self.progress.items()
+                },
+                "stages": {
+                    k: {
+                        "name": v.name,
+                        "status": v.status.value,
+                        "message": v.message,
+                        "started_at": v.started_at,
+                        "completed_at": v.completed_at,
+                    }
+                    for k, v in self.stages.items()
+                },
+            }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "BuildJob":
+        job = cls(
+            build_id=data["build_id"],
+            started_at=data["started_at"],
+            flavor=data["flavor"],
+            platform=data["platform"],
+            branch_name=data["branch_name"],
+            queue_key=data["queue_key"],
+            trigger_source=data.get("trigger_source", "manual"),
+            trigger_event_id=data.get("trigger_event_id"),
+            flutter_sdk_version=data.get("flutter_sdk_version"),
+            gradle_version=data.get("gradle_version"),
+            cocoapods_version=data.get("cocoapods_version"),
+            fastlane_version=data.get("fastlane_version"),
+            build_name=data.get("build_name"),
+            build_number=data.get("build_number"),
+        )
+        job.resolved_flutter_sdk_version = data.get("resolved_flutter_sdk_version")
+        job.status = BuildStatus(data.get("status", "pending"))
+        job.logs = data.get("logs", [])
+
+        if "progress" in data:
+            for k, p_data in data["progress"].items():
+                job.progress[k] = BuildProgress(
+                    current_step=p_data.get("current_step", ""),
+                    percentage=p_data.get("percentage", 0),
+                    current_message=p_data.get("current_message", ""),
+                    steps_completed=p_data.get("steps_completed", []),
+                )
+        
+        if "stages" in data:
+            for k, s_data in data["stages"].items():
+                job.stages[k] = StageState(
+                    name=s_data.get("name", k),
+                    status=StageStatus(s_data.get("status", "pending")),
+                    message=s_data.get("message", ""),
+                    started_at=s_data.get("started_at"),
+                    completed_at=s_data.get("completed_at"),
+                )
+        return job
+

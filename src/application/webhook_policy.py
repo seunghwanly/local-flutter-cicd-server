@@ -20,6 +20,8 @@ class WebhookPolicy:
     def __init__(self) -> None:
         self.dev_base_branch = os.environ.get("WEBHOOK_DEV_BASE_BRANCH", os.environ.get("DEV_BRANCH_NAME", "develop"))
         self.dev_head_prefix = os.environ.get("WEBHOOK_DEV_HEAD_PREFIX", "release-dev-v")
+        self.prod_base_branch = os.environ.get("WEBHOOK_PROD_BASE_BRANCH", os.environ.get("PROD_BRANCH_NAME", "main"))
+        self.prod_head_branch = os.environ.get("WEBHOOK_PROD_HEAD_BRANCH", os.environ.get("DEV_BRANCH_NAME", "develop"))
         self.prod_tag_pattern = os.environ.get("WEBHOOK_PROD_TAG_PATTERN", r"^\d+\.\d+\.\d+$")
 
     def resolve(self, payload: dict, event_type: str) -> Optional[WebhookTrigger]:
@@ -32,6 +34,8 @@ class WebhookPolicy:
             head_ref = payload.get("pull_request", {}).get("head", {}).get("ref", "")
             if base_ref == self.dev_base_branch and head_ref.startswith(self.dev_head_prefix):
                 return WebhookTrigger(flavor="dev")
+            if base_ref == self.prod_base_branch and head_ref == self.prod_head_branch:
+                return WebhookTrigger(flavor="prod")
 
         if event_type == "create" and payload.get("ref_type") == "tag":
             tag_name = payload.get("ref", "")

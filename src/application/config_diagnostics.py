@@ -29,7 +29,7 @@ class ConfigDiagnostics:
         "MATCH_PASSWORD",
     ]
 
-    WEBHOOK_VARS = [
+    GITHUB_ACTION_VARS = [
         "GITHUB_WEBHOOK_SECRET",
     ]
 
@@ -54,9 +54,27 @@ class ConfigDiagnostics:
             },
         )
 
+    def get_github_action_diagnostics(self) -> DiagnosticResult:
+        missing = self._find_missing(self.GITHUB_ACTION_VARS)
+        return DiagnosticResult(feature="github_action", ready=not missing, missing=missing, details={})
+
+    def get_shorebird_action_diagnostics(self) -> DiagnosticResult:
+        missing = self._find_missing(self.GITHUB_ACTION_VARS)
+        details = {
+            "default_flavor": os.environ.get("SHOREBIRD_PATCH_FLAVOR", "prod"),
+            "default_platform": os.environ.get("SHOREBIRD_PATCH_PLATFORM", "all"),
+            "default_branch_name": os.environ.get("SHOREBIRD_PATCH_BRANCH_NAME", "unset"),
+            "signature_source": "GITHUB_WEBHOOK_SECRET",
+        }
+        return DiagnosticResult(
+            feature="shorebird_action",
+            ready=not missing,
+            missing=missing,
+            details=details,
+        )
+
     def get_webhook_diagnostics(self) -> DiagnosticResult:
-        missing = self._find_missing(self.WEBHOOK_VARS)
-        return DiagnosticResult(feature="webhook", ready=not missing, missing=missing, details={})
+        return self.get_github_action_diagnostics()
 
     def get_toolchain_diagnostics(self) -> DiagnosticResult:
         required_commands = ["git", "fvm", "ruby", "gem", "bundle", "pod"]
@@ -95,7 +113,8 @@ class ConfigDiagnostics:
         return {
             "toolchain": self.get_toolchain_diagnostics(),
             "environment": self.get_environment_diagnostics(),
-            "webhook": self.get_webhook_diagnostics(),
+            "github_action": self.get_github_action_diagnostics(),
+            "shorebird_action": self.get_shorebird_action_diagnostics(),
         }
 
     def _find_missing(self, keys: List[str]) -> List[str]:
