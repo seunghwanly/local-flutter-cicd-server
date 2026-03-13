@@ -46,7 +46,6 @@ class CommandRunner:
             stderr=subprocess.STDOUT,
             text=True,
             bufsize=1 if line_buffered else -1,
-            universal_newlines=line_buffered,
             env=env,
             cwd=cwd,
         )
