@@ -37,7 +37,7 @@ class GitHubActionServiceTests(unittest.TestCase):
 
 
 class WebhookPolicyTests(unittest.TestCase):
-    def test_resolve_prod_for_develop_to_main_merge(self) -> None:
+    def test_resolve_returns_none_for_develop_to_main_merge(self) -> None:
         payload = {
             "action": "closed",
             "pull_request": {
@@ -49,8 +49,7 @@ class WebhookPolicyTests(unittest.TestCase):
 
         trigger = WebhookPolicy().resolve(payload, "pull_request")
 
-        self.assertIsNotNone(trigger)
-        self.assertEqual("prod", trigger.flavor)
+        self.assertIsNone(trigger)
 
 
 class ShorebirdActionServiceTests(unittest.TestCase):

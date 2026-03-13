@@ -103,7 +103,6 @@ GitHub Build Action 설정:
 - 이벤트: `Pull requests`, `Create (tags)`
 - 기본 정책:
   - `release/dev* -> develop` 머지 시 `dev`
-  - `develop -> main` 머지 시 `prod`
   - `x.y.z` 태그 생성 시 `prod`
 
 GitHub Shorebird Action 설정:

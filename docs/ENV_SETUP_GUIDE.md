@@ -89,10 +89,6 @@ STAGE_FASTLANE_LANE=beta
 # develop merge webhook 정책
 WEBHOOK_DEV_BASE_BRANCH=develop
 WEBHOOK_DEV_HEAD_PREFIX=release/dev
-
-# production merge webhook 정책
-WEBHOOK_PROD_BASE_BRANCH=main
-WEBHOOK_PROD_HEAD_BRANCH=develop
 ```
 
 ### Slack 알림
