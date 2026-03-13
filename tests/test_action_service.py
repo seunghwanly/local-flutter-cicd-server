@@ -140,6 +140,42 @@ class ShorebirdActionServiceTests(unittest.TestCase):
         )
 
     @patch("src.services.action_service.build_service.start_build_pipeline")
+    def test_handle_accepts_flavor_from_payload_alias(self, start_build_pipeline) -> None:
+        start_build_pipeline.return_value = "build-789"
+        payload = {
+            "ref_type": "tag",
+            "ref": "1.2.3",
+            "payload": {
+                "flavor": "stg",
+                "build_name": "2.2.1",
+                "build_number": "689",
+            },
+        }
+        with patch.dict(
+            os.environ,
+            {
+                "SHOREBIRD_PATCH_FLAVOR": "prod",
+                "SHOREBIRD_PATCH_PLATFORM": "ios",
+                "SHOREBIRD_PATCH_BRANCH_NAME": "main",
+            },
+            clear=False,
+        ):
+            service = ShorebirdActionService()
+
+            result = service.handle(payload, "create", "shorebird-4")
+
+        self.assertEqual({"status": "ok", "build_id": "build-789"}, result)
+        start_build_pipeline.assert_called_once_with(
+            flavor="stage",
+            platform="ios",
+            trigger_source="shorebird",
+            trigger_event_id="shorebird-4",
+            build_name="2.2.1",
+            build_number="689",
+            branch_name="main",
+        )
+
+    @patch("src.services.action_service.build_service.start_build_pipeline")
     def test_handle_ignores_non_tag_event(self, start_build_pipeline) -> None:
         service = ShorebirdActionService()
 
