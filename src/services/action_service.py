@@ -91,12 +91,16 @@ class ShorebirdActionService:
         if not self._is_supported_tag_event(payload, event_type):
             return {"status": "ignored"}
 
+        build_name = self._extract_webhook_value(payload, "build_name")
+        build_number = self._extract_webhook_value(payload, "build_number")
+
         build_id = build_service.start_build_pipeline(
             flavor=os.environ.get("SHOREBIRD_PATCH_FLAVOR", "prod"),
             platform=os.environ.get("SHOREBIRD_PATCH_PLATFORM", "all"),
             trigger_source="shorebird",
             trigger_event_id=delivery_id or event_type,
-            build_name=self._payload_value(payload, "ref"),
+            build_name=build_name or self._payload_value(payload, "ref"),
+            build_number=build_number,
             branch_name=os.environ.get("SHOREBIRD_PATCH_BRANCH_NAME"),
         )
         return {"status": "ok", "build_id": build_id}
@@ -106,6 +110,19 @@ class ShorebirdActionService:
             value = payload.get(key)
             if value is not None:
                 return str(value)
+        return None
+
+    def _extract_webhook_value(self, payload: Dict[str, Any], key: str) -> Optional[str]:
+        value = self._payload_value(payload, key)
+        if value is not None:
+            return value
+
+        for container_key in ("payload", "inputs", "client_payload"):
+            nested_payload = payload.get(container_key)
+            if isinstance(nested_payload, dict):
+                value = self._payload_value(nested_payload, key)
+                if value is not None:
+                    return value
         return None
 
     def _is_supported_tag_event(self, payload: Dict[str, Any], event_type: Optional[str]) -> bool:
