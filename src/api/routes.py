@@ -158,6 +158,58 @@ def create_app() -> FastAPI:
         payload = await request.json()
         return shorebird_action_service.handle(payload, x_github_event, x_github_delivery)
 
+    @app.post("/build/shorebird", response_model=ManualBuildResponse, tags=["Manual Build"])
+    async def manual_shorebird_build(
+        platform: str = Form("", description="platform 설정. 비우면 SHOREBIRD_PATCH_PLATFORM 또는 all 사용"),
+        build_name: Optional[str] = Form("", description="shorebird release/tag name"),
+        build_number: Optional[str] = Form("", description="shorebird patch number"),
+        branch_name: Optional[str] = Form("", description="branch name 설정. 비우면 SHOREBIRD_PATCH_BRANCH_NAME 또는 main 사용"),
+        flutter_sdk_version: Optional[str] = Form("", description="flutter sdk version 설정. 제공되지 않으면 저장소의 .fvmrc 파일 사용"),
+        gradle_version: Optional[str] = Form("", description="gradle version 설정. 제공되지 않으면 .env의 GRADLE_VERSION 사용"),
+        cocoapods_version: Optional[str] = Form("", description="cocoapods version 설정. 제공되지 않으면 .env의 COCOAPODS_VERSION 사용"),
+        fastlane_version: Optional[str] = Form("", description="fastlane version 설정. 제공되지 않으면 .env의 FASTLANE_VERSION 사용")
+    ):
+        """
+        수동 Shorebird 패치 빌드 트리거
+
+        prod 기준 Shorebird patch 배포용 빌드를 수동으로 트리거합니다.
+        """
+        resolved_platform = (platform or os.environ.get("SHOREBIRD_PATCH_PLATFORM") or "all").strip()
+        resolved_branch = (branch_name or os.environ.get("SHOREBIRD_PATCH_BRANCH_NAME") or os.environ.get("PROD_BRANCH_NAME") or "main").strip()
+
+        try:
+            request_model = BuildRequest(
+                flavor="prod",
+                platform=resolved_platform,
+                build_name=build_name,
+                build_number=build_number,
+                branch_name=resolved_branch,
+                flutter_sdk_version=flutter_sdk_version,
+                gradle_version=gradle_version,
+                cocoapods_version=cocoapods_version,
+                fastlane_version=fastlane_version,
+            )
+        except ValidationError as exc:
+            raise HTTPException(status_code=422, detail=exc.errors()) from exc
+
+        try:
+            build_id = build_service.start_build_pipeline(
+                request_model.flavor,
+                request_model.platform,
+                "shorebird_manual",
+                None,
+                request_model.build_name,
+                request_model.build_number,
+                request_model.branch_name,
+                request_model.flutter_sdk_version,
+                request_model.gradle_version,
+                request_model.cocoapods_version,
+                request_model.fastlane_version,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {"status": "manual trigger ok", "build_id": build_id}
+    
     @app.post("/build", response_model=ManualBuildResponse, tags=["Manual Build"])
     async def manual_build(
         flavor: str = Form("dev", description="flavor 설정: dev, stage, prod"),

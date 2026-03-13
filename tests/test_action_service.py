@@ -77,9 +77,9 @@ class ShorebirdActionServiceTests(unittest.TestCase):
             self.assertTrue(service.verify_signature(payload, f"sha256={expected}"))
 
     @patch("src.services.action_service.build_service.start_build_pipeline")
-    def test_handle_uses_env_defaults_for_patch_trigger(self, start_build_pipeline) -> None:
+    def test_handle_uses_tag_event_for_patch_trigger(self, start_build_pipeline) -> None:
         start_build_pipeline.return_value = "build-123"
-        payload = {"release_version": "1.2.3", "patch_number": "7"}
+        payload = {"ref_type": "tag", "ref": "1.2.3"}
         with patch.dict(
             os.environ,
             {
@@ -91,7 +91,7 @@ class ShorebirdActionServiceTests(unittest.TestCase):
         ):
             service = ShorebirdActionService()
 
-            result = service.handle(payload, "patch_published", "shorebird-1")
+            result = service.handle(payload, "create", "shorebird-1")
 
         self.assertEqual({"status": "ok", "build_id": "build-123"}, result)
         start_build_pipeline.assert_called_once_with(
@@ -100,9 +100,17 @@ class ShorebirdActionServiceTests(unittest.TestCase):
             trigger_source="shorebird",
             trigger_event_id="shorebird-1",
             build_name="1.2.3",
-            build_number="7",
             branch_name="main",
         )
+
+    @patch("src.services.action_service.build_service.start_build_pipeline")
+    def test_handle_ignores_non_tag_event(self, start_build_pipeline) -> None:
+        service = ShorebirdActionService()
+
+        result = service.handle({"action": "closed"}, "pull_request", "shorebird-2")
+
+        self.assertEqual({"status": "ignored"}, result)
+        start_build_pipeline.assert_not_called()
 
 
 if __name__ == "__main__":

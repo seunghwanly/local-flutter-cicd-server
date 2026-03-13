@@ -169,7 +169,16 @@ GitHub에서 전송되는 일반 build action 이벤트를 처리합니다.
 
 **POST** `/github-action/shorebird`
 
-GitHub가 전달한 Shorebird patch 이벤트를 처리합니다.
+GitHub가 전달한 Shorebird prod 태그 생성 이벤트를 처리합니다.
+
+**지원하는 이벤트:**
+- **태그 생성**: x.y.z 형식의 태그가 생성될 때 prod shorebird 빌드 트리거
+
+### 7. 수동 Shorebird 빌드
+
+**POST** `/build/shorebird`
+
+Shorebird patch 배포용 빌드를 수동으로 트리거합니다.
 
 **응답 예시:**
 ```json
