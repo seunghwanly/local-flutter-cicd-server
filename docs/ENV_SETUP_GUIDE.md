@@ -88,7 +88,7 @@ STAGE_FASTLANE_LANE=beta
 ```bash
 # develop merge webhook 정책
 WEBHOOK_DEV_BASE_BRANCH=develop
-WEBHOOK_DEV_HEAD_PREFIX=release-dev-v
+WEBHOOK_DEV_HEAD_PREFIX=release/dev
 
 # production merge webhook 정책
 WEBHOOK_PROD_BASE_BRANCH=main
