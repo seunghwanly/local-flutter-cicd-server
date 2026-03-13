@@ -137,6 +137,34 @@ class RepositoryWorkspaceManagerTests(unittest.TestCase):
             runner.calls,
         )
 
+    def test_run_fvm_use_uses_non_interactive_flags(self) -> None:
+        runner = FakeCommandRunner()
+        manager = RepositoryWorkspaceManager(runner)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_path = Path(tmp)
+            manager._run_fvm_use(
+                build_id="build-1",
+                repo_path=repo_path,
+                env={},
+                flutter_version="3.41.2",
+                log=lambda _: None,
+            )
+
+        self.assertEqual(
+            [
+                (
+                    "fvm",
+                    "use",
+                    "3.41.2",
+                    "--force",
+                    "--skip-pub-get",
+                    "--skip-setup",
+                )
+            ],
+            runner.calls,
+        )
+
     def test_resolve_flutter_version_prefers_tool_versions_then_env_fallback(self) -> None:
         manager = CapturingRepositoryWorkspaceManager()
 

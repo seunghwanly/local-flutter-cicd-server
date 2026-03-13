@@ -172,7 +172,7 @@ class RepositoryWorkspaceManager:
         log(f"[{build_id}] 📦 Running fvm use {flutter_version}")
         try:
             result = self.command_runner.run_checked(
-                ["fvm", "use", flutter_version],
+                ["fvm", "use", flutter_version, "--force", "--skip-pub-get", "--skip-setup"],
                 env=env,
                 cwd=str(repo_path),
             )
