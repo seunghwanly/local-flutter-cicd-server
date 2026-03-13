@@ -37,6 +37,21 @@ class GitHubActionServiceTests(unittest.TestCase):
 
 
 class WebhookPolicyTests(unittest.TestCase):
+    def test_resolve_dev_for_merge_into_release_dev_prefix(self) -> None:
+        payload = {
+            "action": "closed",
+            "pull_request": {
+                "merged": True,
+                "base": {"ref": "release/dev-hotfix"},
+                "head": {"ref": "feature/offline-coupon"},
+            },
+        }
+
+        trigger = WebhookPolicy().resolve(payload, "pull_request")
+
+        self.assertIsNotNone(trigger)
+        self.assertEqual("dev", trigger.flavor)
+
     def test_resolve_returns_none_for_develop_to_main_merge(self) -> None:
         payload = {
             "action": "closed",

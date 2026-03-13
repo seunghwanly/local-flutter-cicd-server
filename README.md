@@ -102,7 +102,7 @@ GitHub Build Action 설정:
 - Secret: `.env`의 `GITHUB_WEBHOOK_SECRET`
 - 이벤트: `Pull requests`, `Create (tags)`
 - 기본 정책:
-  - `release/dev* -> develop` 머지 시 `dev`
+  - `* -> release/dev*` 머지 시 `dev`
   - `x.y.z` 태그 생성 시 `prod`
 
 GitHub Shorebird Action 설정:
