@@ -69,7 +69,7 @@ class GitHubActionService:
 
 
 class ShorebirdActionService:
-    """Translate GitHub-delivered Shorebird patch events into build triggers."""
+    """Translate GitHub-delivered Shorebird tag events into build triggers."""
 
     def __init__(self) -> None:
         self.verifier = HmacVerifier("GITHUB_WEBHOOK_SECRET")
@@ -91,13 +91,12 @@ class ShorebirdActionService:
         if not self._is_supported_tag_event(payload, event_type):
             return {"status": "ignored"}
 
-        tag_name = self._payload_value(payload, "ref")
         build_id = build_service.start_build_pipeline(
             flavor=os.environ.get("SHOREBIRD_PATCH_FLAVOR", "prod"),
             platform=os.environ.get("SHOREBIRD_PATCH_PLATFORM", "all"),
             trigger_source="shorebird",
             trigger_event_id=delivery_id or event_type,
-            build_name=tag_name,
+            build_name=self._payload_value(payload, "ref"),
             branch_name=os.environ.get("SHOREBIRD_PATCH_BRANCH_NAME"),
         )
         return {"status": "ok", "build_id": build_id}

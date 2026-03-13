@@ -69,7 +69,7 @@ class WebhookPolicyTests(unittest.TestCase):
 
 class ShorebirdActionServiceTests(unittest.TestCase):
     def test_verify_signature_accepts_same_github_secret(self) -> None:
-        payload = b'{"release_version":"1.2.3"}'
+        payload = b'{"ref":"1.2.3"}'
         with patch.dict(os.environ, {"GITHUB_WEBHOOK_SECRET": "topsecret"}, clear=False):
             expected = hmac.new(b"topsecret", msg=payload, digestmod=hashlib.sha256).hexdigest()
             service = ShorebirdActionService()

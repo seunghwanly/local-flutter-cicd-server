@@ -142,7 +142,7 @@ def create_app() -> FastAPI:
         """
         GitHub Shorebird action 처리
 
-        GitHub가 전달한 Shorebird patch 이벤트를 공통 빌드 파이프라인으로 전달합니다.
+        GitHub가 전달한 Shorebird prod 태그 생성 이벤트를 공통 빌드 파이프라인으로 전달합니다.
         """
         action_diagnostics = diagnostics.get_shorebird_action_diagnostics()
         if not action_diagnostics.ready:
@@ -209,7 +209,7 @@ def create_app() -> FastAPI:
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return {"status": "manual trigger ok", "build_id": build_id}
-    
+
     @app.post("/build", response_model=ManualBuildResponse, tags=["Manual Build"])
     async def manual_build(
         flavor: str = Form("dev", description="flavor 설정: dev, stage, prod"),
