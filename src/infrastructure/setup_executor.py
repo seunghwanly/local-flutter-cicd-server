@@ -216,6 +216,7 @@ class SetupExecutor:
             return
 
         if (ios_dir / "Gemfile").exists():
+            self._ensure_gem("cocoapods", env.get("COCOAPODS_VERSION"), ios_dir, env, build_id, log)
             self._ensure_bundler(ios_dir, env, build_id, log)
             self._bundle_install(ios_dir, env, build_id, log)
             return

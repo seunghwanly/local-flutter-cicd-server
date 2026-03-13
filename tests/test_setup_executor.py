@@ -100,6 +100,7 @@ class SetupExecutorTests(unittest.TestCase):
         executor = SetupExecutor(runner)
         logs: list[str] = []
 
+        runner.add_response(["gem", "list", "-i", "cocoapods", "-v", "1.16.2"], returncode=0)
         runner.add_response(["gem", "list", "-i", "bundler"], returncode=0)
         runner.add_response(["bundle", "config", "set", "--local", "path", "/tmp/gems"])
         runner.add_response(["bundle", "install"], stdout="bundle ok")
@@ -114,10 +115,11 @@ class SetupExecutorTests(unittest.TestCase):
                 build_id="build-ios",
                 platform="ios",
                 repo_dir=str(repo_dir),
-                env={"GEM_HOME": "/tmp/gems"},
+                env={"GEM_HOME": "/tmp/gems", "COCOAPODS_VERSION": "1.16.2"},
                 log=logs.append,
             )
 
+        self.assertIn(("gem", "list", "-i", "cocoapods", "-v", "1.16.2"), runner.calls)
         self.assertIn(("bundle", "install"), runner.calls)
         self.assertTrue(any("Installing Ruby bundle" in line for line in logs))
 
