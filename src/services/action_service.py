@@ -71,6 +71,16 @@ class GitHubActionService:
 class ShorebirdActionService:
     """Translate GitHub-delivered Shorebird tag events into build triggers."""
 
+    FLAVOR_ALIASES = {
+        "dev": "dev",
+        "development": "dev",
+        "stg": "stage",
+        "stage": "stage",
+        "prd": "prod",
+        "prod": "prod",
+        "production": "prod",
+    }
+
     def __init__(self) -> None:
         self.verifier = HmacVerifier("GITHUB_WEBHOOK_SECRET")
         self.prod_tag_pattern = os.environ.get("WEBHOOK_PROD_TAG_PATTERN", r"^\d+\.\d+\.\d+$")
@@ -91,11 +101,12 @@ class ShorebirdActionService:
         if not self._is_supported_tag_event(payload, event_type):
             return {"status": "ignored"}
 
+        flavor = self._resolve_flavor(payload)
         build_name = self._extract_webhook_value(payload, "build_name")
         build_number = self._extract_webhook_value(payload, "build_number")
 
         build_id = build_service.start_build_pipeline(
-            flavor=os.environ.get("SHOREBIRD_PATCH_FLAVOR", "prod"),
+            flavor=flavor,
             platform=os.environ.get("SHOREBIRD_PATCH_PLATFORM", "all"),
             trigger_source="shorebird",
             trigger_event_id=delivery_id or event_type,
@@ -124,6 +135,17 @@ class ShorebirdActionService:
                 if value is not None:
                     return value
         return None
+
+    def _resolve_flavor(self, payload: Dict[str, Any]) -> str:
+        requested_flavor = self._extract_webhook_value(payload, "flavor")
+        if requested_flavor is None:
+            return os.environ.get("SHOREBIRD_PATCH_FLAVOR", "prod")
+
+        normalized = self.FLAVOR_ALIASES.get(requested_flavor.strip().lower())
+        if normalized is not None:
+            return normalized
+
+        return os.environ.get("SHOREBIRD_PATCH_FLAVOR", "prod")
 
     def _is_supported_tag_event(self, payload: Dict[str, Any], event_type: Optional[str]) -> bool:
         if event_type != "create":
