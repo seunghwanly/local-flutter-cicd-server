@@ -165,6 +165,21 @@ class RepositoryWorkspaceManagerTests(unittest.TestCase):
             runner.calls,
         )
 
+    def test_ensure_melos_sdk_path_adds_sdk_path_when_missing(self) -> None:
+        manager = RepositoryWorkspaceManager(FakeCommandRunner())
+        logs: list[str] = []
+
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_path = Path(tmp)
+            melos_path = repo_path / "melos.yaml"
+            melos_path.write_text("name: workspace\npackages:\n  - packages/**\n", encoding="utf-8")
+
+            manager._ensure_melos_sdk_path("build-1", repo_path, logs.append)
+
+            self.assertTrue(melos_path.read_text(encoding="utf-8").startswith("sdkPath: .fvm/flutter_sdk\n"))
+
+        self.assertTrue(any("Added sdkPath to melos.yaml" in line for line in logs))
+
     def test_resolve_flutter_version_prefers_tool_versions_then_env_fallback(self) -> None:
         manager = CapturingRepositoryWorkspaceManager()
 

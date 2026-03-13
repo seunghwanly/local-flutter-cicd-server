@@ -62,6 +62,7 @@ class RepositoryWorkspaceManager:
         if previous_version:
             log(f"[{build_id}] 📚 Previously synced Flutter SDK version: {previous_version}")
 
+        self._ensure_melos_sdk_path(build_id, repo_path, log)
         self._run_fvm_use(build_id, repo_path, env, resolved_version, log)
 
         precache_ran = False
@@ -182,6 +183,19 @@ class RepositoryWorkspaceManager:
         for line in result.stdout.splitlines():
             if line.strip():
                 log(f"[{build_id}][FVM] {line.strip()}")
+
+    def _ensure_melos_sdk_path(self, build_id: str, repo_path: Path, log) -> None:
+        melos_path = repo_path / "melos.yaml"
+        if not melos_path.exists():
+            return
+
+        content = melos_path.read_text(encoding="utf-8")
+        if "sdkPath:" in content:
+            log(f"[{build_id}] ✅ melos.yaml already declares sdkPath")
+            return
+
+        melos_path.write_text(f"sdkPath: .fvm/flutter_sdk\n{content}", encoding="utf-8")
+        log(f"[{build_id}] 🔧 Added sdkPath to melos.yaml before running fvm use")
 
     def _run_flutter_precache(
         self,
