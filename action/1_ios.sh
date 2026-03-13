@@ -87,9 +87,19 @@ fi
 # pod install 실행
 echo "📚 Running pod install..."
 if [ "$USE_BUNDLER" = true ]; then
-    bundle exec pod install --repo-update
+    if bundle exec pod install; then
+        true
+    else
+        echo "⚠️ pod install failed, retrying with --repo-update"
+        bundle exec pod install --repo-update
+    fi
 else
-    pod install --repo-update
+    if pod install; then
+        true
+    else
+        echo "⚠️ pod install failed, retrying with --repo-update"
+        pod install --repo-update
+    fi
 fi
 
 # # Fastlane match (필요시)

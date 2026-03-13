@@ -34,21 +34,20 @@ class FakeCommandRunner:
 
 
 class SetupExecutorTests(unittest.TestCase):
-    def test_run_setup_repairs_cache_and_retries_pub_get(self) -> None:
+    def test_run_setup_repairs_cache_and_retries_pub_get_without_melos(self) -> None:
         runner = FakeCommandRunner()
         executor = SetupExecutor(runner)
         logs: list[str] = []
 
         runner.add_response(["fvm", "dart", "pub", "global", "activate", "melos"])
         runner.add_response(["fvm", "dart", "pub", "global", "activate", "flutterfire_cli"])
-        runner.add_response(["fvm", "exec", "melos", "run", "pub"], returncode=1, stdout="melos failed")
         runner.add_response(
             ["fvm", "flutter", "pub", "get", "--verbose"],
             returncode=1,
             stdout="pub get failed",
         )
         runner.add_response(["fvm", "flutter", "pub", "cache", "repair"], stdout="repair ok")
-        runner.add_response(["fvm", "exec", "melos", "run", "pub"], stdout="melos ok")
+        runner.add_response(["fvm", "flutter", "pub", "get", "--verbose"], stdout="pub get ok")
 
         with tempfile.TemporaryDirectory() as tmp:
             repo_dir = Path(tmp) / "repo"
@@ -67,9 +66,34 @@ class SetupExecutorTests(unittest.TestCase):
         self.assertIn(("fvm", "flutter", "pub", "cache", "repair"), runner.calls)
         self.assertEqual(
             2,
-            runner.calls.count(("fvm", "exec", "melos", "run", "pub")),
+            runner.calls.count(("fvm", "flutter", "pub", "get", "--verbose")),
         )
         self.assertTrue(any("Dependency resolution recovered" in line for line in logs))
+
+    def test_run_setup_uses_melos_only_when_workspace_file_exists(self) -> None:
+        runner = FakeCommandRunner()
+        executor = SetupExecutor(runner)
+
+        runner.add_response(["fvm", "dart", "pub", "global", "activate", "melos"])
+        runner.add_response(["fvm", "dart", "pub", "global", "activate", "flutterfire_cli"])
+        runner.add_response(["fvm", "exec", "melos", "run", "pub"], stdout="melos ok")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_dir = Path(tmp) / "repo"
+            pub_cache = Path(tmp) / "pub_cache"
+            repo_dir.mkdir()
+            (repo_dir / "pubspec.yaml").write_text("name: sample\n", encoding="utf-8")
+            (repo_dir / "melos.yaml").write_text("name: workspace\n", encoding="utf-8")
+            (pub_cache / "git" / "cache").mkdir(parents=True)
+
+            executor.run_setup(
+                build_id="build-melos",
+                repo_dir=str(repo_dir),
+                env={"PUB_CACHE": str(pub_cache)},
+                log=lambda _: None,
+            )
+
+        self.assertIn(("fvm", "exec", "melos", "run", "pub"), runner.calls)
 
     def test_prepare_ios_toolchain_uses_bundler_when_gemfile_exists(self) -> None:
         runner = FakeCommandRunner()
