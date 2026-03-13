@@ -31,6 +31,21 @@ def create_app() -> FastAPI:
         docs_url="/docs",
         redoc_url="/redoc"
     )
+
+    def normalize_shorebird_manual_flavor(value: str) -> str:
+        aliases = {
+            "dev": "dev",
+            "development": "dev",
+            "stg": "stage",
+            "stage": "stage",
+            "prd": "prod",
+            "prod": "prod",
+            "production": "prod",
+        }
+        normalized = aliases.get(value.strip().lower())
+        if normalized is None:
+            raise ValueError(f"Unsupported flavor: {value}")
+        return normalized
     
     @app.get("/", response_model=RootResponse, tags=["Health Check"])
     async def root():
@@ -168,6 +183,7 @@ def create_app() -> FastAPI:
 
     @app.post("/build/shorebird", response_model=ManualBuildResponse, tags=["Manual Build"])
     async def manual_shorebird_build(
+        flavor: str = Form("", description="flavor 설정. 비우면 SHOREBIRD_PATCH_FLAVOR 또는 prod 사용. dev, stg, stage, prd, prod 지원"),
         platform: str = Form("", description="platform 설정. 비우면 SHOREBIRD_PATCH_PLATFORM 또는 all 사용"),
         build_name: Optional[str] = Form("", description="shorebird release/tag name"),
         build_number: Optional[str] = Form("", description="shorebird patch number"),
@@ -182,12 +198,18 @@ def create_app() -> FastAPI:
 
         prod 기준 Shorebird patch 배포용 빌드를 수동으로 트리거합니다.
         """
+        raw_flavor = (flavor or os.environ.get("SHOREBIRD_PATCH_FLAVOR") or "prod").strip()
         resolved_platform = (platform or os.environ.get("SHOREBIRD_PATCH_PLATFORM") or "all").strip()
         resolved_branch = (branch_name or os.environ.get("SHOREBIRD_PATCH_BRANCH_NAME") or os.environ.get("PROD_BRANCH_NAME") or "main").strip()
 
         try:
+            resolved_flavor = normalize_shorebird_manual_flavor(raw_flavor)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+        try:
             request_model = BuildRequest(
-                flavor="prod",
+                flavor=resolved_flavor,
                 platform=resolved_platform,
                 build_name=build_name,
                 build_number=build_number,

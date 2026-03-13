@@ -180,6 +180,13 @@ GitHub가 전달한 Shorebird prod 태그 생성 이벤트를 처리합니다.
 
 Shorebird patch 배포용 빌드를 수동으로 트리거합니다.
 
+**요청 파라미터:**
+- `flavor` (string, 선택사항): `dev`, `stg`, `stage`, `prd`, `prod` 지원. 비우면 `SHOREBIRD_PATCH_FLAVOR` 또는 `prod`
+- `platform` (string, 선택사항): 대상 플랫폼 ("all", "android", "ios")
+- `build_name` (string, 선택사항): Shorebird release/tag name
+- `build_number` (string, 선택사항): Shorebird patch number
+- `branch_name` (string, 선택사항): 빌드할 Git 브랜치 이름
+
 **응답 예시:**
 ```json
 {
