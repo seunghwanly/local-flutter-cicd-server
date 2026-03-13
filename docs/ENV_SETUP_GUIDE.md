@@ -35,7 +35,7 @@ CACHE_CLEANUP_DAYS=7
 ### Git & GitHub (필수)
 
 ```bash
-# GitHub Webhook 시크릿
+# GitHub Action 시크릿
 GITHUB_WEBHOOK_SECRET=your_webhook_secret_here
 
 # Git 리포지토리 URL

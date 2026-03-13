@@ -150,19 +150,26 @@ uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 }
 ```
 
-### 5. GitHub Webhook
+### 5. GitHub Actions
 
-**POST** `/webhook`
+**POST** `/github-action/build`
 
-GitHub에서 전송되는 webhook 이벤트를 처리합니다.
+GitHub에서 전송되는 일반 build action 이벤트를 처리합니다.
 
 **헤더:**
 - `X-Hub-Signature-256`: GitHub webhook 서명
+- `X-Hub-Signature`: GitHub webhook 서명 (sha1 fallback)
 - `X-GitHub-Event`: GitHub 이벤트 타입
 
 **지원하는 이벤트:**
 - **PR 머지**: develop 브랜치에 release/dev* 패턴의 PR이 머지될 때 dev 빌드 트리거
 - **태그 생성**: x.y.z 형식의 태그가 생성될 때 prod 빌드 트리거
+
+### 6. GitHub Shorebird Action
+
+**POST** `/github-action/shorebird`
+
+GitHub가 전달한 Shorebird patch 이벤트를 처리합니다.
 
 **응답 예시:**
 ```json

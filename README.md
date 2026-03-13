@@ -61,7 +61,7 @@ cp env.template .env
 | Git 리포 | `REPO_URL` | Git 리포지토리 주소 |
 | 브랜치 이름 | `DEV_BRANCH_NAME` / `PROD_BRANCH_NAME` | 배포 대상 브랜치 |
 | Fastlane Lane | `DEV_FASTLANE_LANE` / `PROD_FASTLANE_LANE` | Fastlane에서 실행할 lane 이름 |
-| Webhook 서명 | `GITHUB_WEBHOOK_SECRET` | GitHub Webhook 보안 키 |
+| GitHub Action 서명 | `GITHUB_WEBHOOK_SECRET` | GitHub Action 보안 키 |
 | Slack | `SLACK_WEBHOOK_CHANNEL` | Slack Webhook URL |
 
 ### 2. 서버 실행
@@ -112,7 +112,6 @@ GitHub Shorebird Action 설정:
 
 주의:
 - `GITHUB_WEBHOOK_SECRET`이 없으면 해당 `POST /github-action/*` 엔드포인트는 `503`을 반환합니다.
-- 기존 `/webhook`은 호환용 alias로 유지됩니다.
 - 수동 빌드 API와 상태 조회는 GitHub secret 없이도 로컬에서 사용할 수 있습니다.
 - 빌드에 필요한 env가 빠져 있으면 `/build`는 누락 키 목록과 함께 즉시 실패합니다.
 - 저장소를 새로 pull한 뒤 Flutter SDK 버전이 바뀌면, 빌드 전에 Python 오케스트레이터가 `fvm flutter precache --ios`를 반드시 먼저 실행합니다.

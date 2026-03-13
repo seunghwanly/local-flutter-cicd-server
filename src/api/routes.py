@@ -131,23 +131,6 @@ def create_app() -> FastAPI:
         result = github_action_service.handle(payload, x_github_event, x_github_delivery)
         return result
 
-    @app.post("/webhook", response_model=ActionResponse, tags=["GitHub Webhook"])
-    async def handle_webhook_alias(
-        request: Request,
-        x_hub_signature_256: str = Header(None, description="GitHub webhook signature"),
-        x_hub_signature: str = Header(None, description="GitHub webhook signature (sha1)"),
-        x_github_event: str = Header(None, description="GitHub event type"),
-        x_github_delivery: str = Header(None, description="GitHub delivery id"),
-    ):
-        """Deprecated GitHub webhook alias kept for compatibility."""
-        return await handle_github_build_action(
-            request=request,
-            x_hub_signature_256=x_hub_signature_256,
-            x_hub_signature=x_hub_signature,
-            x_github_event=x_github_event,
-            x_github_delivery=x_github_delivery,
-        )
-
     @app.post("/github-action/shorebird", response_model=ActionResponse, tags=["GitHub Actions"])
     async def handle_github_shorebird_action(
         request: Request,
