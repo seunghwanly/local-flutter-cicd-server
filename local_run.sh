@@ -16,7 +16,7 @@ set -o pipefail
 python -m pip install -r requirements.txt | { grep -v "already satisfied" || :; }
 
 if [ ! -f .env ]; then
-    echo "⚠️ .env 파일이 없습니다. env.template 또는 env.sample을 참고해 생성하세요."
+    echo "⚠️ .env 파일이 없습니다. env.template 를 참고해 생성하세요."
 fi
 
 if [ "${RUN_NGROK:-0}" = "1" ]; then
