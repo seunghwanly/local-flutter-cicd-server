@@ -54,6 +54,7 @@ echo ""
 FASTLANE_LANE="${FASTLANE_LANE:-beta}"
 BUILD_NAME="${BUILD_NAME:-}"
 BUILD_NUMBER="${BUILD_NUMBER:-}"
+COCOAPODS_VERSION="${COCOAPODS_VERSION:-}"
 
 # # Flutter 아티팩트 준비
 # echo "📦 Ensuring flutter artifacts..."
@@ -64,6 +65,16 @@ BUILD_NUMBER="${BUILD_NUMBER:-}"
 
 if [ "$USE_BUNDLER" = true ]; then
     echo "📦 Gemfile detected, using Bundler prepared by Python setup"
+    if [ -f "Gemfile.lock" ]; then
+        LOCKED_COCOAPODS_VERSION="$(ruby -e 'lock = File.read("Gemfile.lock"); match = lock.match(/^ {4}cocoapods \(([^)]+)\)$/); puts(match ? match[1] : "")')"
+        if [ -n "$LOCKED_COCOAPODS_VERSION" ]; then
+            echo "📦 Gemfile.lock CocoaPods version: $LOCKED_COCOAPODS_VERSION"
+        else
+            echo "⚠️ Gemfile.lock exists but CocoaPods version could not be parsed"
+        fi
+    else
+        echo "⚠️ Gemfile detected without Gemfile.lock"
+    fi
 else
     echo "📦 Using gem-based tooling prepared by Python setup"
     if ! gem list -i cocoapods > /dev/null 2>&1; then
@@ -78,15 +89,27 @@ fi
 
 # CocoaPods 버전 확인
 echo "📦 CocoaPods version:"
-if [ "$USE_BUNDLER" = true ]; then
+if [ -n "$COCOAPODS_VERSION" ]; then
+    echo "📦 Executing CocoaPods via: pod _$COCOAPODS_VERSION_"
+    pod "_$COCOAPODS_VERSION_" --version
+elif [ "$USE_BUNDLER" = true ]; then
+    echo "📦 Executing CocoaPods via: bundle exec pod"
     bundle exec pod --version
 else
+    echo "📦 Executing CocoaPods via: pod"
     pod --version
 fi
 
 # pod install 실행
 echo "📚 Running pod install..."
-if [ "$USE_BUNDLER" = true ]; then
+if [ -n "$COCOAPODS_VERSION" ]; then
+    if pod "_$COCOAPODS_VERSION_" install; then
+        true
+    else
+        echo "⚠️ pod install failed, retrying with --repo-update"
+        pod "_$COCOAPODS_VERSION_" install --repo-update
+    fi
+elif [ "$USE_BUNDLER" = true ]; then
     if bundle exec pod install; then
         true
     else
