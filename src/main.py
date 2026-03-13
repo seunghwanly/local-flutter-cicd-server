@@ -34,25 +34,47 @@ def load_env_file(env_file_path: Path) -> bool:
     try:
         loaded_count = 0
         with open(env_file_path, 'r', encoding='utf-8') as f:
-            for line_num, line in enumerate(f, 1):
-                line = line.strip()
-                if line and not line.startswith('#') and '=' in line:
-                    try:
-                        key, value = line.split('=', 1)
-                        key = key.strip()
-                        value = value.strip()
-                        
-                        # 값에서 따옴표 제거
-                        if value.startswith('"') and value.endswith('"'):
-                            value = value[1:-1]
-                        elif value.startswith("'") and value.endswith("'"):
-                            value = value[1:-1]
-                        
-                        os.environ[key] = value
+            pending_key = None
+            pending_quote = None
+            pending_value_lines = []
+
+            for line_num, raw_line in enumerate(f, 1):
+                line = raw_line.rstrip("\n")
+                stripped = line.strip()
+
+                if pending_key:
+                    pending_value_lines.append(line)
+                    if stripped.endswith(pending_quote):
+                        pending_value_lines[-1] = pending_value_lines[-1][: pending_value_lines[-1].rfind(pending_quote)]
+                        os.environ[pending_key] = "\n".join(pending_value_lines)
                         loaded_count += 1
-                    except ValueError as e:
-                        logger.warning(f"Invalid line {line_num} in {env_file_path}: {line} - {e}")
-                        continue
+                        pending_key = None
+                        pending_quote = None
+                        pending_value_lines = []
+                    continue
+
+                if not stripped or stripped.startswith('#') or '=' not in line:
+                    continue
+
+                try:
+                    key, value = line.split('=', 1)
+                    key = key.strip()
+                    value = value.strip()
+
+                    if value.startswith('"') or value.startswith("'"):
+                        quote_char = value[0]
+                        if len(value) == 1 or not value.endswith(quote_char):
+                            pending_key = key
+                            pending_quote = quote_char
+                            pending_value_lines = [value[1:]]
+                            continue
+                        value = value[1:-1]
+
+                    os.environ[key] = value
+                    loaded_count += 1
+                except ValueError as e:
+                    logger.warning(f"Invalid line {line_num} in {env_file_path}: {line} - {e}")
+                    continue
         
         logger.info(f"Loaded {loaded_count} environment variables from {env_file_path}")
         return True
@@ -62,8 +84,9 @@ def load_env_file(env_file_path: Path) -> bool:
         return False
 
 # 환경변수 로드 (.env 파일이 있는 경우)
-env_file = project_root / ".env"
-load_env_file(env_file)
+for env_file in (project_root.parent / ".env", project_root / ".env"):
+    if load_env_file(env_file):
+        break
 
 # FastAPI 애플리케이션 임포트
 from .api import app

@@ -67,12 +67,12 @@ def setup_git_credentials(build_workspace: Path, env: dict):
         ssh_config = home_dir / ".ssh" / "config"
         if ssh_config.exists():
             # GIT_SSH_COMMAND로 SSH 옵션 명시
-            env["GIT_SSH_COMMAND"] = f"ssh -F {ssh_config} -o StrictHostKeyChecking=no"
+            env["GIT_SSH_COMMAND"] = f"ssh -F {ssh_config} -o StrictHostKeyChecking=accept-new"
             print(f"✅ SSH config: {ssh_config}")
             logger.info(f"✅ SSH config: {ssh_config}")
         else:
             # 기본 SSH 명령
-            env["GIT_SSH_COMMAND"] = "ssh -o StrictHostKeyChecking=no"
+            env["GIT_SSH_COMMAND"] = "ssh -o StrictHostKeyChecking=accept-new"
         
         # 4. .gitconfig 복사 (선택적이지만 권장)
         gitconfig_src = home_dir / ".gitconfig"
@@ -117,7 +117,7 @@ def get_shared_cache_dir() -> Path:
     Returns:
         공유 캐시 루트 디렉토리 경로
     """
-    shared = Path.home() / "ci-cd-workspace" / "shared"
+    shared = WORKSPACE_ROOT / "shared"
     shared.mkdir(parents=True, exist_ok=True)
     return shared
 
@@ -430,4 +430,3 @@ def get_max_parallel_builds() -> int:
         최대 병렬 빌드 수 (기본: 3)
     """
     return int(os.environ.get("MAX_PARALLEL_BUILDS", 3))
-

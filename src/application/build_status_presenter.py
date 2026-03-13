@@ -1,0 +1,90 @@
+"""Project build jobs into API-friendly status payloads."""
+
+from __future__ import annotations
+
+from typing import Dict, Optional
+
+from ..domain import BuildJob, BuildStatus
+
+
+class BuildStatusPresenter:
+    """Convert runtime build state into response dictionaries."""
+
+    def detail(self, job: BuildJob, log_file_path: Optional[str]) -> Dict:
+        status = self._effective_status(job).value
+        return {
+            "build_id": job.build_id,
+            "status": status,
+            "started_at": job.started_at,
+            "flavor": job.flavor,
+            "platform": job.platform,
+            "flutter_sdk_version": job.flutter_sdk_version,
+            "resolved_flutter_sdk_version": job.resolved_flutter_sdk_version,
+            "gradle_version": job.gradle_version,
+            "cocoapods_version": job.cocoapods_version,
+            "fastlane_version": job.fastlane_version,
+            "branch_name": job.branch_name,
+            "build_name": job.build_name,
+            "build_number": job.build_number,
+            "queue_key": job.queue_key,
+            "processes": {
+                name: {
+                    "running": self._is_running(job, name),
+                    "return_code": self._return_code(job, name),
+                }
+                for name in ("android", "ios")
+                if name in job.processes or job.platform in {"all", name}
+            },
+            "progress": {
+                name: {
+                    "current_step": progress.current_step,
+                    "percentage": progress.percentage,
+                    "steps_completed": progress.steps_completed,
+                    "current_message": progress.current_message,
+                }
+                for name, progress in job.progress.items()
+            },
+            "stages": [
+                {
+                    "name": stage.name,
+                    "status": stage.status.value,
+                    "message": stage.message,
+                    "started_at": stage.started_at,
+                    "completed_at": stage.completed_at,
+                }
+                for stage in job.stages.values()
+            ],
+            "logs": job.logs,
+            "log_file_path": log_file_path,
+        }
+
+    def summary(self, job: BuildJob) -> Dict:
+        return {
+            "build_id": job.build_id,
+            "status": self._effective_status(job).value,
+            "started_at": job.started_at,
+            "flavor": job.flavor,
+            "platform": job.platform,
+            "flutter_sdk_version": job.flutter_sdk_version,
+            "resolved_flutter_sdk_version": job.resolved_flutter_sdk_version,
+            "gradle_version": job.gradle_version,
+            "cocoapods_version": job.cocoapods_version,
+            "fastlane_version": job.fastlane_version,
+            "branch_name": job.branch_name,
+            "build_name": job.build_name,
+            "build_number": job.build_number,
+            "queue_key": job.queue_key,
+        }
+
+    def _effective_status(self, job: BuildJob) -> BuildStatus:
+        if any(self._is_running(job, key) for key in ("android", "ios")):
+            return BuildStatus.RUNNING
+        return job.status
+
+    def _is_running(self, job: BuildJob, key: str) -> bool:
+        process = job.processes.get(key)
+        return bool(process and process.poll() is None)
+
+    def _return_code(self, job: BuildJob, key: str):
+        process = job.processes.get(key)
+        return process.returncode if process else None

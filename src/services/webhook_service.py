@@ -1,14 +1,11 @@
-"""
-Flutter CI/CD Server - Webhook Service
+"""GitHub webhook processing service."""
 
-GitHub Webhook 처리 서비스
-"""
 import os
 import hmac
 import hashlib
-import re
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
+from ..application import WebhookPolicy
 from .build_service import build_service
 
 
@@ -16,11 +13,13 @@ class WebhookService:
     """GitHub Webhook 처리 서비스"""
     
     def __init__(self):
-        # GitHub Webhook Secret은 환경변수에서 반드시 직접 지정해야 함
+        self.policy = WebhookPolicy()
+    
+    def _get_secret(self) -> Optional[bytes]:
         github_secret_env = os.environ.get("GITHUB_WEBHOOK_SECRET")
         if not github_secret_env:
-            raise RuntimeError("환경변수 GITHUB_WEBHOOK_SECRET이 설정되지 않았습니다.")
-        self.github_secret = github_secret_env.encode()
+            return None
+        return github_secret_env.encode()
     
     def verify_signature(self, payload: bytes, signature: str) -> bool:
         """
@@ -33,6 +32,10 @@ class WebhookService:
         Returns:
             서명 검증 성공 여부
         """
+        secret = self._get_secret()
+        if not secret:
+            return False
+
         if not signature:
             return False
             
@@ -44,7 +47,7 @@ class WebhookService:
             if sha_name != 'sha256':
                 return False
                 
-            mac = hmac.new(self.github_secret, msg=payload, digestmod=hashlib.sha256)
+            mac = hmac.new(secret, msg=payload, digestmod=hashlib.sha256)
             return hmac.compare_digest(mac.hexdigest(), signature_hash)
             
         except (ValueError, AttributeError) as e:
@@ -62,28 +65,10 @@ class WebhookService:
         Returns:
             처리 결과 딕셔너리
         """
-        if (
-            event_type == "pull_request" and
-            payload.get("action") == "closed" and
-            payload.get("pull_request", {}).get("merged")
-        ):
-            if (payload.get("pull_request", {}).get("base", {}).get("ref") == "develop" and
-                    payload.get("pull_request", {}).get("head", {}).get("ref").startswith("release-dev-v")):
-                print("✅ PR merged to develop! Running CI/CD...")
-                build_id = build_service.start_build_pipeline("dev", "all")
-                return {"status": "ok", "build_id": build_id}
-
-        elif (
-            event_type == "create" and
-            payload.get("ref_type") == "tag"
-        ):
-            tag_name = payload.get("ref", "")
-            print(f"✅ Tag created: {tag_name}")
-
-            if re.match(r"\d+\.\d+\.\d+", tag_name):
-                print(f"✅ Valid tag format: {tag_name}")
-                build_id = build_service.start_build_pipeline("prod", "all")
-                return {"status": "ok", "build_id": build_id}
+        trigger = self.policy.resolve(payload, event_type)
+        if trigger:
+            build_id = build_service.start_build_pipeline(trigger.flavor, trigger.platform)
+            return {"status": "ok", "build_id": build_id}
 
         return {"status": "ok"}
 

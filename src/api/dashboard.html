@@ -1,0 +1,884 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flutter CI/CD Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --card-bg: rgba(30, 41, 59, 0.7);
+            --card-border: rgba(255, 255, 255, 0.1);
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --accent: #3b82f6;
+            --success: #10b981;
+            --error: #ef4444;
+            --warning: #f59e0b;
+            --font-family: 'Inter', sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            font-family: var(--font-family);
+            margin: 0;
+            padding: 0;
+            background-image: 
+                radial-gradient(circle at 15% 50%, rgba(59, 130, 246, 0.15), transparent 25%),
+                radial-gradient(circle at 85% 30%, rgba(16, 185, 129, 0.15), transparent 25%);
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 40px;
+            animation: fadeInDown 0.8s ease-out;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin: 0;
+            background: linear-gradient(to right, #60a5fa, #a78bfa);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .header-controls {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .header-status {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            background: var(--card-bg);
+            padding: 10px 20px;
+            border-radius: 50px;
+            border: 1px solid var(--card-border);
+            backdrop-filter: blur(10px);
+            font-weight: 500;
+            font-size: 0.9rem;
+        }
+
+        .btn-diagnostics {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--text-primary);
+            text-decoration: none;
+            padding: 10px 20px;
+            border-radius: 50px;
+            border: 1px solid var(--card-border);
+            font-weight: 500;
+            font-size: 0.9rem;
+            transition: all 0.2s ease;
+            backdrop-filter: blur(10px);
+        }
+
+        .btn-diagnostics:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        }
+
+        .pulse-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background-color: var(--success);
+            box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+            animation: pulse 2s infinite;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 24px;
+        }
+
+        .hero-grid {
+            display: grid;
+            grid-template-columns: minmax(0, 1.5fr) minmax(280px, 0.9fr);
+            gap: 24px;
+            margin-bottom: 24px;
+        }
+
+        .panel {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 18px;
+            padding: 24px;
+            backdrop-filter: blur(12px);
+        }
+
+        .hero-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin: 0 0 8px;
+        }
+
+        .hero-copy {
+            color: var(--text-secondary);
+            margin: 0 0 18px;
+            line-height: 1.5;
+        }
+
+        .metrics {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 12px;
+        }
+
+        .metric {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 14px;
+            padding: 14px 16px;
+        }
+
+        .metric-label {
+            color: var(--text-secondary);
+            font-size: 0.78rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .metric-value {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-top: 8px;
+        }
+
+        .diagnostic-list {
+            display: grid;
+            gap: 10px;
+        }
+
+        .diagnostic-item {
+            border: 1px solid rgba(255,255,255,0.06);
+            background: rgba(255,255,255,0.04);
+            border-radius: 12px;
+            padding: 12px 14px;
+        }
+
+        .diagnostic-top {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .diagnostic-name {
+            font-weight: 600;
+            text-transform: capitalize;
+        }
+
+        .diagnostic-meta {
+            color: var(--text-secondary);
+            font-size: 0.82rem;
+            line-height: 1.45;
+        }
+
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 16px;
+            padding: 24px;
+            backdrop-filter: blur(12px);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            animation: fadeInUp 0.5s ease-out backwards;
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
+            border-color: rgba(255, 255, 255, 0.2);
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 16px;
+        }
+
+        .build-id {
+            font-family: monospace;
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+            background: rgba(0, 0, 0, 0.3);
+            padding: 4px 8px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+
+        .build-id:hover {
+            color: var(--text-primary);
+        }
+
+        .status-badge {
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .status-running {
+            background-color: rgba(59, 130, 246, 0.2);
+            color: #60a5fa;
+            border: 1px solid rgba(59, 130, 246, 0.4);
+        }
+
+        .status-success {
+            background-color: rgba(16, 185, 129, 0.2);
+            color: #34d399;
+            border: 1px solid rgba(16, 185, 129, 0.4);
+        }
+
+        .status-failed {
+            background-color: rgba(239, 68, 68, 0.2);
+            color: #f87171;
+            border: 1px solid rgba(239, 68, 68, 0.4);
+        }
+
+        .status-pending {
+            background-color: rgba(245, 158, 11, 0.2);
+            color: #fbbf24;
+            border: 1px solid rgba(245, 158, 11, 0.4);
+        }
+
+        .status-canceled {
+            background-color: rgba(107, 114, 128, 0.2);
+            color: #9ca3af;
+            border: 1px solid rgba(107, 114, 128, 0.4);
+        }
+
+        .info-row {
+            display: flex;
+            margin-bottom: 12px;
+            align-items: center;
+        }
+
+        .info-label {
+            width: 90px;
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+            flex-shrink: 0;
+        }
+
+        .info-value {
+            font-weight: 500;
+            font-size: 0.9rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .tag {
+            background: rgba(255, 255, 255, 0.08);
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            margin-right: 6px;
+        }
+
+        .time {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            margin-top: auto;
+            padding-top: 16px;
+            text-align: right;
+        }
+
+        .empty-state {
+            grid-column: 1 / -1;
+            text-align: center;
+            padding: 80px 20px;
+            color: var(--text-secondary);
+            background: var(--card-bg);
+            border: 1px dashed var(--card-border);
+            border-radius: 16px;
+            font-size: 1.1rem;
+        }
+
+        .loader {
+            display: inline-block;
+            width: 24px;
+            height: 24px;
+            border: 3px solid rgba(255,255,255,.2);
+            border-radius: 50%;
+            border-top-color: var(--accent);
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(16, 185, 129, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+        }
+
+        @keyframes fadeInDown {
+            from { opacity: 0; transform: translateY(-20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Detail Modal */
+        .modal-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(5px);
+            z-index: 100;
+            display: none;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+            box-sizing: border-box;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .modal-overlay.active {
+            display: flex;
+            opacity: 1;
+        }
+
+        .modal-content {
+            background: #1e293b;
+            border: 1px solid var(--card-border);
+            border-radius: 16px;
+            width: 100%;
+            max-width: 800px;
+            max-height: 90vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            transform: translateY(20px);
+            transition: transform 0.3s;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        }
+
+        .modal-overlay.active .modal-content {
+            transform: translateY(0);
+        }
+
+        .modal-header {
+            padding: 20px 24px;
+            border-bottom: 1px solid var(--card-border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(15, 23, 42, 0.5);
+        }
+
+        .modal-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .close-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 1.5rem;
+            cursor: pointer;
+            line-height: 1;
+            padding: 0;
+            transition: color 0.2s;
+        }
+
+        .close-btn:hover {
+            color: var(--text-primary);
+        }
+
+        .modal-body {
+            padding: 24px;
+            overflow-y: auto;
+            flex: 1;
+        }
+
+        .log-container {
+            background: #0f172a;
+            border-radius: 8px;
+            padding: 16px;
+            font-family: monospace;
+            font-size: 0.85rem;
+            color: #d1d5db;
+            white-space: pre-wrap;
+            overflow-y: auto;
+            max-height: 400px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            line-height: 1.5;
+        }
+
+        .stage-list {
+            display: grid;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .stage-item {
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 10px;
+            padding: 12px 14px;
+        }
+
+        .stage-top {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            align-items: center;
+            margin-bottom: 6px;
+        }
+
+        .stage-name {
+            font-size: 0.9rem;
+            font-weight: 600;
+        }
+
+        .stage-message {
+            color: var(--text-secondary);
+            font-size: 0.84rem;
+            line-height: 1.4;
+        }
+
+        .log-line {
+            margin: 0;
+        }
+
+        .log-line.error {
+            color: #ef4444;
+        }
+        
+        .log-line.warn {
+            color: #f59e0b;
+        }
+
+        .log-line.success {
+            color: #10b981;
+        }
+
+        @media (max-width: 900px) {
+            .hero-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .metrics {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+        }
+
+        @media (max-width: 640px) {
+            header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 16px;
+            }
+
+            .header-controls {
+                width: 100%;
+                flex-wrap: wrap;
+            }
+
+            .metrics {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Flutter CI/CD</h1>
+            <div class="header-controls">
+                <a href="/diagnostics" target="_blank" class="btn-diagnostics">
+                    <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"></path></svg>
+                    Diagnostics
+                </a>
+                <div class="header-status">
+                    <div class="pulse-dot" id="connection-dot"></div>
+                    <span id="connection-text">Connecting...</span>
+                </div>
+            </div>
+        </header>
+
+        <section class="hero-grid">
+            <div class="panel">
+                <h2 class="hero-title">Pipeline Snapshot</h2>
+                <p class="hero-copy">Request validation, repository sync, Flutter setup, toolchain prep, and store build progress are summarized here.</p>
+                <div class="metrics">
+                    <div class="metric">
+                        <div class="metric-label">Total</div>
+                        <div class="metric-value" id="metric-total">0</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Running</div>
+                        <div class="metric-value" id="metric-running">0</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Completed</div>
+                        <div class="metric-value" id="metric-completed">0</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Failed</div>
+                        <div class="metric-value" id="metric-failed">0</div>
+                    </div>
+                </div>
+            </div>
+            <div class="panel">
+                <h2 class="hero-title">Runtime Diagnostics</h2>
+                <div class="diagnostic-list" id="diagnostic-list">
+                    <div class="diagnostic-item">Loading diagnostics...</div>
+                </div>
+            </div>
+        </section>
+
+        <div id="builds-grid" class="grid">
+            <div class="empty-state">
+                <div class="loader"></div>
+                <p style="margin-top: 16px;">Loading builds...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal for Logs -->
+    <div id="log-modal" class="modal-overlay">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <h3 class="modal-title">
+                    <span id="modal-build-id">Build Logs</span>
+                    <span id="modal-status-badge" class="status-badge"></span>
+                </h3>
+                <button class="close-btn" onclick="closeModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="info-row" style="margin-bottom: 20px;">
+                    <span class="info-label">Started:</span>
+                    <span class="info-value" id="modal-started-at"></span>
+                </div>
+                <div class="stage-list" id="modal-stages"></div>
+                <div class="log-container" id="modal-logs">
+                    <div class="loader"></div> Loading logs...
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = window.location.protocol === 'file:' ? 'http://127.0.0.1:8000' : window.location.origin;
+
+        const formatTime = (isoString) => {
+            if (!isoString) return 'Unknown';
+            const date = new Date(isoString);
+            return date.toLocaleString(undefined, {
+                month: 'short', day: 'numeric', 
+                hour: '2-digit', minute: '2-digit', second: '2-digit'
+            });
+        };
+
+        const getStatusClass = (status) => {
+            if (!status) return 'status-pending';
+            const s = status.toLowerCase();
+            if (s === 'running' || s === 'in_progress') return 'status-running';
+            if (s === 'success' || s === 'completed') return 'status-success';
+            if (s === 'failed' || s === 'error') return 'status-failed';
+            if (s === 'canceled') return 'status-canceled';
+            return 'status-pending';
+        };
+
+        const getStatusLabel = (status) => {
+            if (!status) return 'Unknown';
+            if (status.toLowerCase() === 'running') return 'Running...';
+            return status;
+        };
+
+        const formatLogLine = (line) => {
+            let className = 'log-line';
+            const text = line.toLowerCase();
+            if (text.includes('error') || text.includes('failed') || text.includes('exception')) {
+                className += ' error';
+            } else if (text.includes('warn')) {
+                className += ' warn';
+            } else if (text.includes('success') || text.includes('done')) {
+                className += ' success';
+            }
+            return `<div class="${className}">${line.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>`;
+        };
+
+        const escapeHtml = (value) => String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+
+        const humanizeStage = (value) => (value || '')
+            .replaceAll('_', ' ')
+            .replace(/\b\w/g, (char) => char.toUpperCase());
+
+        let currentBuilds = {};
+        let modalPollingInterval = null;
+        let currentModalBuildId = null;
+
+        const setConnectionState = (state, label) => {
+            const dot = document.getElementById('connection-dot');
+            const text = document.getElementById('connection-text');
+            const colorMap = {
+                live: 'var(--success)',
+                error: 'var(--error)',
+                loading: 'var(--warning)',
+            };
+
+            dot.style.backgroundColor = colorMap[state] || 'var(--warning)';
+            dot.style.boxShadow = '0 0 0 0 rgba(16, 185, 129, 0.7)';
+            text.innerText = label;
+        };
+
+        const updateMetrics = (builds) => {
+            const counts = builds.reduce((acc, build) => {
+                acc.total += 1;
+                const status = (build.status || '').toLowerCase();
+                if (status === 'running') acc.running += 1;
+                else if (status === 'completed' || status === 'success') acc.completed += 1;
+                else if (status === 'failed' || status === 'error') acc.failed += 1;
+                return acc;
+            }, { total: 0, running: 0, completed: 0, failed: 0 });
+
+            document.getElementById('metric-total').innerText = counts.total;
+            document.getElementById('metric-running').innerText = counts.running;
+            document.getElementById('metric-completed').innerText = counts.completed;
+            document.getElementById('metric-failed').innerText = counts.failed;
+        };
+
+        const fetchDiagnostics = async () => {
+            try {
+                const response = await fetch(`${API_BASE}/diagnostics`);
+                if (!response.ok) throw new Error('diagnostics failed');
+                const data = await response.json();
+                const diagnostics = data.diagnostics || {};
+                const html = Object.entries(diagnostics).map(([key, item]) => `
+                    <div class="diagnostic-item">
+                        <div class="diagnostic-top">
+                            <div class="diagnostic-name">${humanizeStage(key)}</div>
+                            <span class="status-badge ${item.ready ? 'status-success' : 'status-failed'}">${item.ready ? 'Ready' : 'Needs Attention'}</span>
+                        </div>
+                        <div class="diagnostic-meta">
+                            ${item.missing?.length ? `Missing: ${item.missing.join(', ')}` : 'All required checks passed.'}
+                        </div>
+                    </div>
+                `).join('');
+                document.getElementById('diagnostic-list').innerHTML = html || '<div class="diagnostic-item">No diagnostics available.</div>';
+            } catch (error) {
+                document.getElementById('diagnostic-list').innerHTML = '<div class="diagnostic-item">Failed to load diagnostics.</div>';
+            }
+        };
+
+        const fetchBuilds = async () => {
+            try {
+                setConnectionState('loading', 'Syncing...');
+                const response = await fetch(`${API_BASE}/builds`);
+                if (!response.ok) throw new Error('Network response was not ok');
+                
+                const data = await response.json();
+                const builds = data.builds || [];
+                updateMetrics(builds);
+                
+                const grid = document.getElementById('builds-grid');
+                setConnectionState('live', 'Live');
+                
+                if (builds.length === 0) {
+                    grid.innerHTML = `
+                        <div class="empty-state">
+                            <h3>No builds found</h3>
+                            <p style="margin-top: 8px;">Trigger a build via webhook or API.</p>
+                        </div>
+                    `;
+                } else {
+                    builds.sort((a, b) => new Date(b.started_at) - new Date(a.started_at));
+
+                    let html = '';
+                    builds.forEach((build, index) => {
+                        currentBuilds[build.build_id] = build;
+                        html += `
+                            <div class="card" style="animation-delay: ${Math.min(index * 0.05, 0.5)}s" onclick="openModal('${build.build_id}')">
+                                <div class="card-header">
+                                    <span class="build-id" title="Click to view logs">#${build.build_id.substring(0, 8)}</span>
+                                    <span class="status-badge ${getStatusClass(build.status)}">${getStatusLabel(build.status)}</span>
+                                </div>
+                                
+                                <div class="info-row">
+                                    <span class="info-label">Branch</span>
+                                    <span class="info-value">
+                                        <span class="tag">🌿 ${build.branch_name || 'unknown'}</span>
+                                    </span>
+                                </div>
+                                
+                                <div class="info-row">
+                                    <span class="info-label">Target</span>
+                                    <span class="info-value">
+                                        <span class="tag">${build.flavor?.toUpperCase() || 'DEV'}</span>
+                                        <span class="tag">${build.platform?.toUpperCase() || 'ALL'}</span>
+                                    </span>
+                                </div>
+                                
+                                ${build.resolved_flutter_sdk_version || build.flutter_sdk_version ? `
+                                <div class="info-row">
+                                    <span class="info-label">Flutter</span>
+                                    <span class="info-value">${build.resolved_flutter_sdk_version || build.flutter_sdk_version}</span>
+                                </div>
+                                ` : ''}
+
+                                ${(build.stages && build.stages.length) ? `
+                                <div class="info-row">
+                                    <span class="info-label">Stage</span>
+                                    <span class="info-value">${humanizeStage(build.stages.find(stage => stage.status === 'running')?.name || build.stages[build.stages.length - 1]?.name || 'pending')}</span>
+                                </div>
+                                ` : ''}
+
+                                <div class="time">
+                                    Started: ${formatTime(build.started_at)}
+                                </div>
+                            </div>
+                        `;
+                    });
+
+                    // Only update DOM if HTML changed (poor man's vDOM)
+                    if (grid.dataset.htmlCache !== html) {
+                        grid.innerHTML = html;
+                        grid.dataset.htmlCache = html;
+                    }
+                }
+            } catch (error) {
+                console.error('Error fetching builds:', error);
+                setConnectionState('error', 'Disconnected');
+            }
+        };
+
+        // Modal Functions
+        const fetchBuildDetail = async (buildId) => {
+            try {
+                const response = await fetch(`${API_BASE}/build/${buildId}`);
+                if (!response.ok) throw new Error('Failed to fetch build details');
+                return await response.json();
+            } catch (error) {
+                console.error(error);
+                return null;
+            }
+        };
+
+        const updateModalData = async () => {
+            if (!currentModalBuildId) return;
+            const data = await fetchBuildDetail(currentModalBuildId);
+            if (!data) return;
+
+            document.getElementById('modal-status-badge').className = `status-badge ${getStatusClass(data.status)}`;
+            document.getElementById('modal-status-badge').innerText = getStatusLabel(data.status);
+
+            const stageContainer = document.getElementById('modal-stages');
+            const stages = data.stages || [];
+            stageContainer.innerHTML = stages.length
+                ? stages.map((stage) => `
+                    <div class="stage-item">
+                        <div class="stage-top">
+                            <div class="stage-name">${humanizeStage(stage.name)}</div>
+                            <span class="status-badge ${getStatusClass(stage.status)}">${getStatusLabel(stage.status)}</span>
+                        </div>
+                        <div class="stage-message">${escapeHtml(stage.message || 'Waiting')}</div>
+                    </div>
+                `).join('')
+                : '<div class="stage-item">No stage timeline available.</div>';
+            
+            const logContainer = document.getElementById('modal-logs');
+            if (data.logs && data.logs.length > 0) {
+                const isScrolledToBottom = logContainer.scrollHeight - logContainer.clientHeight <= logContainer.scrollTop + 50;
+                
+                logContainer.innerHTML = data.logs.map(formatLogLine).join('');
+                
+                if (isScrolledToBottom) {
+                    logContainer.scrollTop = logContainer.scrollHeight;
+                }
+            } else {
+                logContainer.innerHTML = '<div>No logs available yet.</div>';
+            }
+
+            if (data.status !== 'running' && data.status !== 'in_progress' && data.status !== 'pending') {
+                if (modalPollingInterval) {
+                    clearInterval(modalPollingInterval);
+                    modalPollingInterval = null;
+                }
+            }
+        };
+
+        window.openModal = async (buildId) => {
+            currentModalBuildId = buildId;
+            const overlay = document.getElementById('log-modal');
+            const buildSummary = currentBuilds[buildId] || {};
+            
+            document.getElementById('modal-build-id').innerText = `Build #${buildId.substring(0, 8)}`;
+            document.getElementById('modal-status-badge').className = `status-badge ${getStatusClass(buildSummary.status)}`;
+            document.getElementById('modal-status-badge').innerText = getStatusLabel(buildSummary.status);
+            document.getElementById('modal-started-at').innerText = formatTime(buildSummary.started_at);
+            document.getElementById('modal-logs').innerHTML = '<div class="loader"></div> Loading logs...';
+            
+            overlay.classList.add('active');
+            
+            await updateModalData();
+            
+            if (modalPollingInterval) clearInterval(modalPollingInterval);
+            modalPollingInterval = setInterval(updateModalData, 2000);
+        };
+
+        window.closeModal = () => {
+            document.getElementById('log-modal').classList.remove('active');
+            if (modalPollingInterval) {
+                clearInterval(modalPollingInterval);
+                modalPollingInterval = null;
+            }
+            currentModalBuildId = null;
+        };
+
+        document.getElementById('log-modal').addEventListener('click', closeModal);
+
+        // Fetch immediately, then every 4 seconds
+        fetchDiagnostics();
+        fetchBuilds();
+        setInterval(fetchBuilds, 4000);
+        setInterval(fetchDiagnostics, 15000);
+    </script>
+</body>
+</html>

@@ -13,5 +13,7 @@ __all__ = [
     "WebhookResponse",
     "ManualBuildResponse",
     "RootResponse",
-    "CleanupResponse"
+    "CleanupResponse",
+    "DiagnosticItem",
+    "DiagnosticsResponse",
 ]

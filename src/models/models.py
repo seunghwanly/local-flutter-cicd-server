@@ -1,20 +1,18 @@
-"""
-Flutter CI/CD Server - API Models
+"""Pydantic models for API IO."""
 
-Pydantic 모델 정의
-"""
-from typing import Dict, Optional, List
-from pydantic import BaseModel, Field, ConfigDict
+from typing import Dict, Optional, List, Literal
+
+from pydantic import BaseModel, Field, ConfigDict, field_validator
 
 
 class BuildRequest(BaseModel):
     """빌드 요청 모델"""
-    flavor: str = Field(
+    flavor: Literal["dev", "stage", "prod"] = Field(
         default="dev", 
         description="flavor 설정: dev, stage, prod",
         example="dev"
     )
-    platform: str = Field(
+    platform: Literal["all", "android", "ios"] = Field(
         default="all", 
         description="platform 설정: all, android, ios",
         example="all"
@@ -54,6 +52,25 @@ class BuildRequest(BaseModel):
         description="fastlane version 설정 (e.g. 2.228.0). 제공되지 않으면 .env의 FASTLANE_VERSION 사용",
         example="2.228.0"
     )
+
+    @field_validator(
+        "build_name",
+        "build_number",
+        "branch_name",
+        "flutter_sdk_version",
+        "gradle_version",
+        "cocoapods_version",
+        "fastlane_version",
+        mode="before",
+    )
+    @classmethod
+    def normalize_blank_strings(cls, value):
+        if value is None:
+            return None
+        if isinstance(value, str):
+            value = value.strip()
+            return value or None
+        return value
     
     model_config = ConfigDict(
         json_schema_extra={
@@ -80,6 +97,7 @@ class BuildStatusResponse(BaseModel):
     flavor: str
     platform: str
     flutter_sdk_version: Optional[str] = None
+    resolved_flutter_sdk_version: Optional[str] = None
     gradle_version: Optional[str] = None
     cocoapods_version: Optional[str] = None
     fastlane_version: Optional[str] = None
@@ -89,6 +107,7 @@ class BuildStatusResponse(BaseModel):
     queue_key: Optional[str] = None
     processes: Dict
     progress: Dict
+    stages: List[Dict] = Field(default_factory=list)
     logs: List[str]
     log_file_path: Optional[str] = None
 
@@ -101,6 +120,7 @@ class BuildSummary(BaseModel):
     flavor: str
     platform: str
     flutter_sdk_version: Optional[str] = None
+    resolved_flutter_sdk_version: Optional[str] = None
     gradle_version: Optional[str] = None
     cocoapods_version: Optional[str] = None
     fastlane_version: Optional[str] = None
@@ -136,3 +156,14 @@ class CleanupResponse(BaseModel):
     """정리 응답 모델"""
     status: str
     message: str
+
+
+class DiagnosticItem(BaseModel):
+    feature: str
+    ready: bool
+    missing: List[str]
+    details: Dict[str, str] = Field(default_factory=dict)
+
+
+class DiagnosticsResponse(BaseModel):
+    diagnostics: Dict[str, DiagnosticItem]
