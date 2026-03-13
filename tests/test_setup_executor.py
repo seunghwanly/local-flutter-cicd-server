@@ -102,7 +102,7 @@ class SetupExecutorTests(unittest.TestCase):
 
         runner.add_response(["gem", "list", "-i", "cocoapods", "-v", "1.16.2"], returncode=0)
         runner.add_response(["gem", "list", "-i", "bundler"], returncode=0)
-        runner.add_response(["bundle", "config", "set", "--local", "path", "/tmp/gems"])
+        runner.add_response(["bundle", "config", "set", "--local", "path", "/tmp/gems/bundle"])
         runner.add_response(["bundle", "install"], stdout="bundle ok")
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -120,6 +120,7 @@ class SetupExecutorTests(unittest.TestCase):
             )
 
         self.assertIn(("gem", "list", "-i", "cocoapods", "-v", "1.16.2"), runner.calls)
+        self.assertIn(("bundle", "config", "set", "--local", "path", "/tmp/gems/bundle"), runner.calls)
         self.assertIn(("bundle", "install"), runner.calls)
         self.assertTrue(any("Installing Ruby bundle" in line for line in logs))
 

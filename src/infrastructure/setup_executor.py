@@ -256,8 +256,9 @@ class SetupExecutor:
             self.command_runner.run_checked(["gem", "install", "-N", "bundler"], env=env, cwd=str(cwd))
 
     def _bundle_install(self, cwd: Path, env: Dict[str, str], build_id: str, log) -> None:
+        bundle_path = str(Path(env["GEM_HOME"]) / "bundle")
         self.command_runner.run_checked(
-            ["bundle", "config", "set", "--local", "path", env["GEM_HOME"]],
+            ["bundle", "config", "set", "--local", "path", bundle_path],
             env=env,
             cwd=str(cwd),
         )
