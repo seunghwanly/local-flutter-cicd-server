@@ -29,6 +29,9 @@ class BuildStatusPresenter:
             "branch_name": job.branch_name,
             "build_name": job.build_name,
             "build_number": job.build_number,
+            "cancel_reason": job.cancel_reason,
+            "cancel_requested_at": job.cancel_requested_at,
+            "canceled_at": job.canceled_at,
             "queue_key": job.queue_key,
             "processes": {
                 name: {
@@ -78,16 +81,23 @@ class BuildStatusPresenter:
             "branch_name": job.branch_name,
             "build_name": job.build_name,
             "build_number": job.build_number,
+            "cancel_reason": job.cancel_reason,
+            "cancel_requested_at": job.cancel_requested_at,
+            "canceled_at": job.canceled_at,
             "queue_key": job.queue_key,
         }
 
     def _effective_status(self, job: BuildJob) -> BuildStatus:
+        if job.status == BuildStatus.CANCELED:
+            return BuildStatus.CANCELED
         if any(self._is_running(job, key) for key in ("android", "ios")):
             return BuildStatus.RUNNING
         if any(self._return_code(job, key) not in (None, 0) for key in ("android", "ios")):
             return BuildStatus.FAILED
         if any(stage.status == StageStatus.FAILED for stage in job.stages.values()):
             return BuildStatus.FAILED
+        if any(stage.status == StageStatus.CANCELED for stage in job.stages.values()):
+            return BuildStatus.CANCELED
         return job.status
 
     def _is_running(self, job: BuildJob, key: str) -> bool:

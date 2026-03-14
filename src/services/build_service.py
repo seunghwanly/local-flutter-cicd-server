@@ -68,5 +68,8 @@ class BuildService:
     def list_builds(self):
         return self.orchestrator.list_builds()
 
+    def cancel_build(self, build_id: str):
+        return self.orchestrator.cancel_build(build_id)
+
 
 build_service = BuildService()

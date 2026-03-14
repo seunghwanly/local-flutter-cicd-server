@@ -16,6 +16,7 @@ class BuildStatus(str, Enum):
     RUNNING = "running"
     COMPLETED = "completed"
     FAILED = "failed"
+    CANCELED = "canceled"
 
 
 class StageStatus(str, Enum):
@@ -25,6 +26,7 @@ class StageStatus(str, Enum):
     RUNNING = "running"
     COMPLETED = "completed"
     FAILED = "failed"
+    CANCELED = "canceled"
 
 
 @dataclass
@@ -84,6 +86,9 @@ class BuildJob:
     build_name: Optional[str] = None
     build_number: Optional[str] = None
     resolved_flutter_sdk_version: Optional[str] = None
+    cancel_reason: Optional[str] = None
+    cancel_requested_at: Optional[str] = None
+    canceled_at: Optional[str] = None
     status: BuildStatus = BuildStatus.PENDING
     logs: List[str] = field(default_factory=list)
     progress: Dict[str, BuildProgress] = field(default_factory=dict)
@@ -154,6 +159,24 @@ class BuildJob:
         stage.message = message
         stage.completed_at = datetime.now().isoformat()
 
+    def mark_stage_canceled(self, name: str, message: str = "") -> None:
+        stage = self.stages.setdefault(name, StageState(name=name))
+        if not stage.started_at:
+            stage.started_at = datetime.now().isoformat()
+        stage.status = StageStatus.CANCELED
+        stage.message = message
+        stage.completed_at = datetime.now().isoformat()
+
+    def mark_canceled(self, reason: str) -> None:
+        timestamp = datetime.now().isoformat()
+        self.status = BuildStatus.CANCELED
+        self.cancel_reason = reason
+        self.cancel_requested_at = self.cancel_requested_at or timestamp
+        self.canceled_at = timestamp
+        for name, stage in self.stages.items():
+            if stage.status in {StageStatus.PENDING, StageStatus.RUNNING}:
+                self.mark_stage_canceled(name, reason)
+
     def to_dict(self) -> Dict[str, Any]:
         with self.lock:
             return {
@@ -172,6 +195,9 @@ class BuildJob:
                 "build_name": self.build_name,
                 "build_number": self.build_number,
                 "resolved_flutter_sdk_version": self.resolved_flutter_sdk_version,
+                "cancel_reason": self.cancel_reason,
+                "cancel_requested_at": self.cancel_requested_at,
+                "canceled_at": self.canceled_at,
                 "status": self.status.value,
                 "logs": list(self.logs),
                 "progress": {
@@ -214,6 +240,9 @@ class BuildJob:
             build_number=data.get("build_number"),
         )
         job.resolved_flutter_sdk_version = data.get("resolved_flutter_sdk_version")
+        job.cancel_reason = data.get("cancel_reason")
+        job.cancel_requested_at = data.get("cancel_requested_at")
+        job.canceled_at = data.get("canceled_at")
         job.status = BuildStatus(data.get("status", "pending"))
         job.logs = data.get("logs", [])
 
@@ -236,4 +265,3 @@ class BuildJob:
                     completed_at=s_data.get("completed_at"),
                 )
         return job
-

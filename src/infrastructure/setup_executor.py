@@ -25,15 +25,16 @@ class SetupExecutor:
         repo_dir: str,
         env: Dict[str, str],
         log,
+        should_cancel=None,
     ) -> None:
         repo_path = Path(repo_dir)
         pub_cache = Path(env["PUB_CACHE"])
 
         log(f"[{build_id}] 📦 Running Python setup workflow")
         self._ensure_git_cache(pub_cache, build_id, log)
-        self._activate_global_package(repo_path, env, build_id, "melos", log)
-        self._activate_global_package(repo_path, env, build_id, "flutterfire_cli", log)
-        self._run_pub_get(repo_path, pub_cache, env, build_id, log)
+        self._activate_global_package(repo_path, env, build_id, "melos", log, should_cancel=should_cancel)
+        self._activate_global_package(repo_path, env, build_id, "flutterfire_cli", log, should_cancel=should_cancel)
+        self._run_pub_get(repo_path, pub_cache, env, build_id, log, should_cancel=should_cancel)
 
     def prepare_platform_toolchain(
         self,
@@ -43,12 +44,13 @@ class SetupExecutor:
         repo_dir: str,
         env: Dict[str, str],
         log,
+        should_cancel=None,
     ) -> None:
         if platform == "android":
-            self._prepare_android_toolchain(build_id, repo_dir, env, log)
+            self._prepare_android_toolchain(build_id, repo_dir, env, log, should_cancel=should_cancel)
             return
         if platform == "ios":
-            self._prepare_ios_toolchain(build_id, repo_dir, env, log)
+            self._prepare_ios_toolchain(build_id, repo_dir, env, log, should_cancel=should_cancel)
             return
         raise ValueError(f"Unsupported platform for toolchain preparation: {platform}")
 
@@ -92,12 +94,14 @@ class SetupExecutor:
         build_id: str,
         package_name: str,
         log,
+        should_cancel=None,
     ) -> None:
         log(f"[{build_id}] 🔧 Activating {package_name}")
         result = self.command_runner.run_checked(
             ["fvm", "dart", "pub", "global", "activate", package_name],
             env=env,
             cwd=str(repo_path),
+            should_stop=should_cancel,
         )
         for line in result.stdout.splitlines():
             if line.strip():
@@ -110,6 +114,7 @@ class SetupExecutor:
         env: Dict[str, str],
         build_id: str,
         log,
+        should_cancel=None,
     ) -> None:
         pubspec = repo_path / "pubspec.yaml"
         has_melos = (repo_path / "melos.yaml").exists()
@@ -126,7 +131,13 @@ class SetupExecutor:
         commands.append(["fvm", "flutter", "pub", "get", "--verbose"])
 
         for command in commands:
-            result = self.command_runner.run(command, env=env, cwd=str(repo_path), check=False)
+            result = self.command_runner.run(
+                command,
+                env=env,
+                cwd=str(repo_path),
+                check=False,
+                should_stop=should_cancel,
+            )
             for line in result.stdout.splitlines():
                 if line.strip():
                     log(f"[{build_id}][SETUP] {line.strip()}")
@@ -135,12 +146,13 @@ class SetupExecutor:
                 return
 
         log(f"[{build_id}] ⚠️ Dependency resolution failed, repairing pub cache and retrying")
-        self._log_git_dependency_access(repo_path, env, build_id, git_urls, log)
+        self._log_git_dependency_access(repo_path, env, build_id, git_urls, log, should_cancel=should_cancel)
         self._reset_git_cache(pub_cache, build_id, log)
         repair = self.command_runner.run_checked(
             ["fvm", "flutter", "pub", "cache", "repair"],
             env=env,
             cwd=str(repo_path),
+            should_stop=should_cancel,
         )
         for line in repair.stdout.splitlines():
             if line.strip():
@@ -151,7 +163,13 @@ class SetupExecutor:
             retry_commands.append(["fvm", "exec", "melos", "run", "pub"])
         retry_commands.append(["fvm", "flutter", "pub", "get", "--verbose"])
         for command in retry_commands:
-            result = self.command_runner.run(command, env=env, cwd=str(repo_path), check=False)
+            result = self.command_runner.run(
+                command,
+                env=env,
+                cwd=str(repo_path),
+                check=False,
+                should_stop=should_cancel,
+            )
             for line in result.stdout.splitlines():
                 if line.strip():
                     log(f"[{build_id}][SETUP] {line.strip()}")
@@ -176,6 +194,7 @@ class SetupExecutor:
         build_id: str,
         urls: list[str],
         log,
+        should_cancel=None,
     ) -> None:
         for url in urls:
             result = self.command_runner.run(
@@ -183,6 +202,7 @@ class SetupExecutor:
                 env=env,
                 cwd=str(repo_path),
                 check=False,
+                should_stop=should_cancel,
             )
             status = "OK" if result.returncode == 0 else "FAILED"
             log(f"[{build_id}] 🔍 Git dependency access {status}: {url}")
@@ -210,20 +230,21 @@ class SetupExecutor:
         repo_dir: str,
         env: Dict[str, str],
         log,
+        should_cancel=None,
     ) -> None:
         ios_dir = Path(repo_dir) / "ios"
         if not ios_dir.exists():
             return
 
         if (ios_dir / "Gemfile").exists():
-            self._ensure_gem("cocoapods", env.get("COCOAPODS_VERSION"), ios_dir, env, build_id, log)
-            self._ensure_bundler(ios_dir, env, build_id, log)
-            self._bundle_install(ios_dir, env, build_id, log)
+            self._ensure_gem("cocoapods", env.get("COCOAPODS_VERSION"), ios_dir, env, build_id, log, should_cancel=should_cancel)
+            self._ensure_bundler(ios_dir, env, build_id, log, should_cancel=should_cancel)
+            self._bundle_install(ios_dir, env, build_id, log, should_cancel=should_cancel)
             return
 
-        self._ensure_gem("cocoapods", env.get("COCOAPODS_VERSION"), ios_dir, env, build_id, log)
-        self._ensure_gem("fastlane", env.get("FASTLANE_VERSION"), ios_dir, env, build_id, log)
-        self._install_fastlane_plugins(ios_dir, env, build_id, log)
+        self._ensure_gem("cocoapods", env.get("COCOAPODS_VERSION"), ios_dir, env, build_id, log, should_cancel=should_cancel)
+        self._ensure_gem("fastlane", env.get("FASTLANE_VERSION"), ios_dir, env, build_id, log, should_cancel=should_cancel)
+        self._install_fastlane_plugins(ios_dir, env, build_id, log, should_cancel=should_cancel)
 
     def _prepare_android_toolchain(
         self,
@@ -231,39 +252,52 @@ class SetupExecutor:
         repo_dir: str,
         env: Dict[str, str],
         log,
+        should_cancel=None,
     ) -> None:
         android_dir = Path(repo_dir) / "android"
         if not android_dir.exists():
             return
 
         if (android_dir / "Gemfile").exists():
-            self._ensure_bundler(android_dir, env, build_id, log)
-            self._bundle_install(android_dir, env, build_id, log)
+            self._ensure_bundler(android_dir, env, build_id, log, should_cancel=should_cancel)
+            self._bundle_install(android_dir, env, build_id, log, should_cancel=should_cancel)
             return
 
-        self._ensure_digest_crc(android_dir, env, build_id, log)
-        self._ensure_gem("fastlane", env.get("FASTLANE_VERSION"), android_dir, env, build_id, log)
+        self._ensure_digest_crc(android_dir, env, build_id, log, should_cancel=should_cancel)
+        self._ensure_gem("fastlane", env.get("FASTLANE_VERSION"), android_dir, env, build_id, log, should_cancel=should_cancel)
 
-    def _ensure_bundler(self, cwd: Path, env: Dict[str, str], build_id: str, log) -> None:
+    def _ensure_bundler(self, cwd: Path, env: Dict[str, str], build_id: str, log, should_cancel=None) -> None:
         installed = self.command_runner.run(
             ["gem", "list", "-i", "bundler"],
             env=env,
             cwd=str(cwd),
             check=False,
+            should_stop=should_cancel,
         )
         if installed.returncode != 0:
             log(f"[{build_id}] 💎 Installing bundler")
-            self.command_runner.run_checked(["gem", "install", "-N", "bundler"], env=env, cwd=str(cwd))
+            self.command_runner.run_checked(
+                ["gem", "install", "-N", "bundler"],
+                env=env,
+                cwd=str(cwd),
+                should_stop=should_cancel,
+            )
 
-    def _bundle_install(self, cwd: Path, env: Dict[str, str], build_id: str, log) -> None:
+    def _bundle_install(self, cwd: Path, env: Dict[str, str], build_id: str, log, should_cancel=None) -> None:
         bundle_path = str(Path(env["GEM_HOME"]) / "bundle")
         self.command_runner.run_checked(
             ["bundle", "config", "set", "--local", "path", bundle_path],
             env=env,
             cwd=str(cwd),
+            should_stop=should_cancel,
         )
         log(f"[{build_id}] 📦 Installing Ruby bundle in {cwd.name}")
-        result = self.command_runner.run_checked(["bundle", "install"], env=env, cwd=str(cwd))
+        result = self.command_runner.run_checked(
+            ["bundle", "install"],
+            env=env,
+            cwd=str(cwd),
+            should_stop=should_cancel,
+        )
         for line in result.stdout.splitlines():
             if line.strip():
                 log(f"[{build_id}][SETUP] {line.strip()}")
@@ -276,11 +310,18 @@ class SetupExecutor:
         env: Dict[str, str],
         build_id: str,
         log,
+        should_cancel=None,
     ) -> None:
         list_command = ["gem", "list", "-i", gem_name]
         if version:
             list_command.extend(["-v", version])
-        installed = self.command_runner.run(list_command, env=env, cwd=str(cwd), check=False)
+        installed = self.command_runner.run(
+            list_command,
+            env=env,
+            cwd=str(cwd),
+            check=False,
+            should_stop=should_cancel,
+        )
         if installed.returncode == 0:
             log(f"[{build_id}] ✅ {gem_name} already available")
             return
@@ -289,9 +330,14 @@ class SetupExecutor:
         if version:
             install_command.extend(["-v", version])
         log(f"[{build_id}] 💎 Installing {gem_name}{f' {version}' if version else ''}")
-        self.command_runner.run_checked(install_command, env=env, cwd=str(cwd))
+        self.command_runner.run_checked(
+            install_command,
+            env=env,
+            cwd=str(cwd),
+            should_stop=should_cancel,
+        )
 
-    def _install_fastlane_plugins(self, ios_dir: Path, env: Dict[str, str], build_id: str, log) -> None:
+    def _install_fastlane_plugins(self, ios_dir: Path, env: Dict[str, str], build_id: str, log, should_cancel=None) -> None:
         pluginfile = ios_dir / "fastlane" / "Pluginfile"
         if not pluginfile.exists():
             return
@@ -307,6 +353,7 @@ class SetupExecutor:
                 env=env,
                 cwd=str(ios_dir),
                 check=False,
+                should_stop=should_cancel,
             )
             if installed.returncode == 0:
                 continue
@@ -315,14 +362,16 @@ class SetupExecutor:
                 ["gem", "install", "-N", plugin_name],
                 env=env,
                 cwd=str(ios_dir),
+                should_stop=should_cancel,
             )
 
-    def _ensure_digest_crc(self, cwd: Path, env: Dict[str, str], build_id: str, log) -> None:
+    def _ensure_digest_crc(self, cwd: Path, env: Dict[str, str], build_id: str, log, should_cancel=None) -> None:
         installed = self.command_runner.run(
             ["gem", "list", "-i", "digest-crc", "-v", "~> 0.4"],
             env=env,
             cwd=str(cwd),
             check=False,
+            should_stop=should_cancel,
         )
         if installed.returncode == 0:
             return
@@ -336,6 +385,7 @@ class SetupExecutor:
                     ["gem", "install", "-N", "digest-crc", "-v", version],
                     env=env,
                     cwd=str(cwd),
+                    should_stop=should_cancel,
                 )
                 return
             except CommandExecutionError as exc:

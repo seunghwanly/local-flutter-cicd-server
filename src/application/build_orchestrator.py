@@ -10,8 +10,9 @@ from typing import Dict, Optional
 from uuid import uuid4
 
 from ..core.queue_manager import queue_manager
-from ..domain import BuildJob, BuildProgress, BuildRequestData, BuildStatus
+from ..domain import BuildJob, BuildProgress, BuildRequestData, BuildStatus, StageStatus
 from ..infrastructure import BuildLogger, CommandRunner, SetupExecutor
+from ..infrastructure.command_runner import CommandCancelledError
 from .build_environment import BuildEnvironmentAssembler
 from .build_repository import BuildRepository
 from .build_status_presenter import BuildStatusPresenter
@@ -95,18 +96,46 @@ class BuildOrchestrator:
             builds.append(self.status_presenter.summary(job))
         return builds
 
+    def cancel_build(self, build_id: str) -> Optional[Dict]:
+        job = self.repository.get(build_id)
+        if not job:
+            return None
+
+        if job.status in {BuildStatus.COMPLETED, BuildStatus.FAILED, BuildStatus.CANCELED}:
+            return self.get_build_status(build_id)
+
+        with job.lock:
+            job.mark_canceled("Build canceled by user request")
+
+        self._log(job, f"[{job.build_id}] 🛑 Cancellation requested")
+        self._terminate_processes(job)
+        self.repository.save(job)
+        return self.get_build_status(build_id)
+
     def _generate_build_id(self, flavor: str, platform: str) -> str:
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         return f"{flavor}-{platform}-{timestamp}-{uuid4().hex[:8]}"
 
     def _run_pipeline(self, job: BuildJob, request: BuildRequestData) -> None:
+        if self._is_canceled(job):
+            self._log(job, f"[{job.build_id}] 🛑 Skipping pipeline because cancellation was requested before execution")
+            self.repository.save(job)
+            return
         job.status = BuildStatus.RUNNING
         try:
             self._log(job, f"[{job.build_id}] 🛠️ [{job.flavor}] Build started")
             versions = self.version_resolver.resolve(request)
             job.resolved_flutter_sdk_version = versions.flutter_sdk_version
             job.mark_stage_running("environment_prepared", "Preparing isolated build environment")
-            runtime = self.environment_assembler.assemble(job, versions, lambda message: self._log(job, message))
+            runtime = self.environment_assembler.assemble(
+                job,
+                versions,
+                lambda message: self._log(job, message),
+                should_cancel=lambda: self._is_canceled(job),
+            )
+            if self._is_canceled(job):
+                self.repository.save(job)
+                return
             job.mark_stage_completed("environment_prepared", "Isolated build environment ready")
             env = runtime.env
 
@@ -114,7 +143,8 @@ class BuildOrchestrator:
                 return
 
             if not self._run_build_scripts(job, env):
-                job.status = BuildStatus.FAILED
+                if not self._is_canceled(job):
+                    job.status = BuildStatus.FAILED
                 self.repository.save(job)
                 return
 
@@ -124,13 +154,24 @@ class BuildOrchestrator:
                 f"[{job.build_id}] 🎉 Build pipeline completed at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
             )
             self.repository.save(job)
+        except CommandCancelledError:
+            self._mark_canceled(job, "Build canceled while executing command")
+            self.repository.save(job)
         except Exception as exc:
+            if self._is_canceled(job):
+                self._mark_canceled(job, "Build canceled by user request")
+                self.repository.save(job)
+                return
             job.status = BuildStatus.FAILED
             self._log(job, f"[{job.build_id}] 💥 Build pipeline failed: {exc}")
             logger.exception("Build pipeline failed for %s", job.build_id)
             self.repository.save(job)
 
     def _run_setup_script(self, job: BuildJob, env: Dict[str, str]) -> bool:
+        if self._is_canceled(job):
+            self._mark_canceled(job, "Build canceled before setup")
+            self.repository.save(job)
+            return False
         self._log(job, f"[{job.build_id}] 📦 Running setup...")
         job.mark_stage_running("dependencies_installed", "Resolving Flutter dependencies")
         try:
@@ -139,9 +180,18 @@ class BuildOrchestrator:
                 repo_dir=env["LOCAL_DIR"],
                 env=env,
                 log=lambda message: self._log(job, message),
+                should_cancel=lambda: self._is_canceled(job),
             )
+            if self._is_canceled(job):
+                self._mark_canceled(job, "Build canceled during setup")
+                self.repository.save(job)
+                return False
             job.mark_stage_completed("dependencies_installed", "Flutter dependencies resolved")
             return True
+        except CommandCancelledError:
+            self._mark_canceled(job, "Build canceled during setup")
+            self.repository.save(job)
+            return False
         except Exception as exc:
             job.mark_stage_failed("dependencies_installed", str(exc))
             self._log(job, f"[{job.build_id}] ❌ Setup failed: {exc}")
@@ -150,6 +200,10 @@ class BuildOrchestrator:
             return False
 
     def _run_build_scripts(self, job: BuildJob, env: Dict[str, str]) -> bool:
+        if self._is_canceled(job):
+            self._mark_canceled(job, "Build canceled before platform build")
+            self.repository.save(job)
+            return False
         commands = []
         if job.platform in {"all", "android"}:
             commands.append(("android", self._build_command("action/1_android.sh"), self._build_env(env, job)))
@@ -171,8 +225,15 @@ class BuildOrchestrator:
                     repo_dir=env["LOCAL_DIR"],
                     env=env,
                     log=lambda message: self._log(job, message),
+                    should_cancel=lambda: self._is_canceled(job),
                 )
+                if self._is_canceled(job):
+                    self._mark_canceled(job, f"{platform_name.title()} build canceled during toolchain setup")
+                    return False
                 job.mark_stage_completed(toolchain_stage, f"{platform_name.title()} toolchain ready")
+            except CommandCancelledError:
+                self._mark_canceled(job, f"{platform_name.title()} build canceled during toolchain setup")
+                return False
             except Exception as exc:
                 job.mark_stage_failed(toolchain_stage, str(exc))
                 self._log(job, f"[{job.build_id}] ❌ {platform_name.title()} toolchain setup failed: {exc}")
@@ -191,6 +252,10 @@ class BuildOrchestrator:
         success = True
         for platform_name, process in processes:
             self.command_runner.wait(process)
+            if self._is_canceled(job):
+                self._mark_canceled(job, f"{platform_name.title()} build canceled")
+                self.repository.save(job)
+                return False
             if process.returncode != 0:
                 job.mark_stage_failed(f"{platform_name}_build", f"Exit code {process.returncode}")
                 self._log(
@@ -259,3 +324,22 @@ class BuildOrchestrator:
         logger_instance = self.build_loggers.get(job.build_id)
         if logger_instance:
             logger_instance.log(message)
+        self.repository.save(job)
+
+    def _is_canceled(self, job: BuildJob) -> bool:
+        return job.status == BuildStatus.CANCELED
+
+    def _mark_canceled(self, job: BuildJob, reason: str) -> None:
+        with job.lock:
+            job.mark_canceled(reason)
+        self._log(job, f"[{job.build_id}] 🛑 {reason}")
+
+    def _terminate_processes(self, job: BuildJob) -> None:
+        for platform_name, process in list(job.processes.items()):
+            if process.poll() is not None:
+                continue
+            self._log(job, f"[{job.build_id}] 🧹 Terminating {platform_name} build process")
+            self.command_runner.terminate(process)
+            stage_name = f"{platform_name}_build"
+            if stage_name in job.stages and job.stages[stage_name].status in {StageStatus.PENDING, StageStatus.RUNNING}:
+                job.mark_stage_canceled(stage_name, "Build canceled by user request")

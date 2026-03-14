@@ -27,7 +27,7 @@ class BuildEnvironmentAssembler:
     def __init__(self, repository_workspace_manager: RepositoryWorkspaceManager) -> None:
         self.repository_workspace_manager = repository_workspace_manager
 
-    def assemble(self, job: BuildJob, versions: ResolvedVersions, log) -> BuildRuntimeContext:
+    def assemble(self, job: BuildJob, versions: ResolvedVersions, log, should_cancel=None) -> BuildRuntimeContext:
         isolated = get_isolated_env(
             job.build_id,
             flutter_version=versions.flutter_sdk_version,
@@ -58,6 +58,7 @@ class BuildEnvironmentAssembler:
             requested_flutter_version=versions.flutter_sdk_version,
             platform=job.platform,
             log=log,
+            should_cancel=should_cancel,
         )
         job.mark_stage_completed("repository_synced", f"Repository synchronized for {job.branch_name}")
         resolved_flutter_version = prepared.flutter_version

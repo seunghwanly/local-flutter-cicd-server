@@ -64,7 +64,10 @@ class BuildRepository:
         """3초 주기로 변경될 가능성이 있는 빌드들의 상태를 디스크에 저장합니다."""
         while True:
             time.sleep(3.0)
-            active_jobs = [j for j in self._jobs.values() if j.status in (BuildStatus.RUNNING, BuildStatus.PENDING)]
+            active_jobs = [
+                j for j in self._jobs.values()
+                if j.status in (BuildStatus.RUNNING, BuildStatus.PENDING, BuildStatus.CANCELED)
+            ]
             for job in active_jobs:
                 self._persist_to_disk(job)
 
@@ -88,4 +91,3 @@ class BuildRepository:
 
     def list_all(self) -> List[BuildJob]:
         return list(self._jobs.values())
-

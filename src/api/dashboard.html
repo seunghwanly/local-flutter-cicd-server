@@ -313,6 +313,34 @@
             text-align: right;
         }
 
+        .card-actions {
+            display: flex;
+            justify-content: flex-end;
+            margin-top: 16px;
+        }
+
+        .btn-cancel {
+            border: 1px solid rgba(239, 68, 68, 0.5);
+            background: rgba(239, 68, 68, 0.15);
+            color: #fecaca;
+            border-radius: 999px;
+            padding: 8px 14px;
+            font-size: 0.82rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .btn-cancel:hover:not(:disabled) {
+            background: rgba(239, 68, 68, 0.28);
+            transform: translateY(-1px);
+        }
+
+        .btn-cancel:disabled {
+            opacity: 0.55;
+            cursor: wait;
+        }
+
         .empty-state {
             grid-column: 1 / -1;
             text-align: center;
@@ -659,6 +687,7 @@
         let currentBuilds = {};
         let modalPollingInterval = null;
         let currentModalBuildId = null;
+        let cancelInFlight = new Set();
 
         const setConnectionState = (state, label) => {
             const dot = document.getElementById('connection-dot');
@@ -688,6 +717,23 @@
             document.getElementById('metric-running').innerText = counts.running;
             document.getElementById('metric-completed').innerText = counts.completed;
             document.getElementById('metric-failed').innerText = counts.failed;
+        };
+
+        const isCancelableStatus = (status) => {
+            const normalized = (status || '').toLowerCase();
+            return normalized === 'running' || normalized === 'pending';
+        };
+
+        const getCancelButtonHtml = (buildId, status) => {
+            if (!isCancelableStatus(status)) return '';
+            const disabled = cancelInFlight.has(buildId);
+            return `
+                <div class="card-actions">
+                    <button class="btn-cancel" onclick="cancelBuild(event, '${buildId}')" ${disabled ? 'disabled' : ''}>
+                        ${disabled ? '취소 요청 중...' : '빌드 취소'}
+                    </button>
+                </div>
+            `;
         };
 
         const fetchDiagnostics = async () => {
@@ -778,6 +824,7 @@
                                 <div class="time">
                                     요청 시각: ${formatTime(build.started_at)}
                                 </div>
+                                ${getCancelButtonHtml(build.build_id, build.status)}
                             </div>
                         `;
                     });
@@ -803,6 +850,29 @@
             } catch (error) {
                 console.error(error);
                 return null;
+            }
+        };
+
+        window.cancelBuild = async (event, buildId) => {
+            event.stopPropagation();
+            if (cancelInFlight.has(buildId)) return;
+
+            cancelInFlight.add(buildId);
+            fetchBuilds();
+            try {
+                const response = await fetch(`${API_BASE}/build/${buildId}/cancel`, { method: 'POST' });
+                if (!response.ok) {
+                    const error = await response.json().catch(() => ({}));
+                    throw new Error(error.detail || '빌드 취소 요청에 실패했습니다.');
+                }
+                if (currentModalBuildId === buildId) {
+                    await updateModalData();
+                }
+            } catch (error) {
+                alert(error.message || '빌드 취소 요청에 실패했습니다.');
+            } finally {
+                cancelInFlight.delete(buildId);
+                fetchBuilds();
             }
         };
 
