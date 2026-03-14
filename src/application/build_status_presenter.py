@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Dict, Optional
 
 from ..domain import BuildJob, BuildStatus
+from ..domain.builds import StageStatus
 
 
 class BuildStatusPresenter:
@@ -83,6 +84,10 @@ class BuildStatusPresenter:
     def _effective_status(self, job: BuildJob) -> BuildStatus:
         if any(self._is_running(job, key) for key in ("android", "ios")):
             return BuildStatus.RUNNING
+        if any(self._return_code(job, key) not in (None, 0) for key in ("android", "ios")):
+            return BuildStatus.FAILED
+        if any(stage.status == StageStatus.FAILED for stage in job.stages.values()):
+            return BuildStatus.FAILED
         return job.status
 
     def _is_running(self, job: BuildJob, key: str) -> bool:

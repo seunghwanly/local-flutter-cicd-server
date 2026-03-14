@@ -4,6 +4,15 @@ import unittest
 
 from src.application.build_status_presenter import BuildStatusPresenter
 from src.domain import BuildJob, BuildRequestData
+from src.domain.builds import BuildStatus
+
+
+class FakeProcess:
+    def __init__(self, returncode: int | None) -> None:
+        self.returncode = returncode
+
+    def poll(self) -> int | None:
+        return self.returncode
 
 
 class BuildStatusPresenterTests(unittest.TestCase):
@@ -25,6 +34,41 @@ class BuildStatusPresenterTests(unittest.TestCase):
         self.assertEqual("/tmp/build.log", detail["log_file_path"])
         self.assertEqual("manual", detail["trigger_source"])
         self.assertIsNone(detail["trigger_event_id"])
+
+    def test_detail_marks_build_failed_when_any_stage_failed(self) -> None:
+        request = BuildRequestData(flavor="prod", platform="all")
+        job = BuildJob.create(
+            build_id="build-2",
+            request=request,
+            branch_name="main",
+            queue_key="prod-main",
+        )
+        job.status = BuildStatus.COMPLETED
+        job.mark_stage_completed("android_build", "Android completed")
+        job.mark_stage_failed("ios_build", "Exit code 1")
+
+        detail = BuildStatusPresenter().detail(job, None)
+        summary = BuildStatusPresenter().summary(job)
+
+        self.assertEqual("failed", detail["status"])
+        self.assertEqual("failed", summary["status"])
+
+    def test_detail_marks_build_failed_when_process_return_code_is_non_zero(self) -> None:
+        request = BuildRequestData(flavor="prod", platform="android")
+        job = BuildJob.create(
+            build_id="build-3",
+            request=request,
+            branch_name="main",
+            queue_key="prod-main",
+        )
+        job.status = BuildStatus.COMPLETED
+        job.processes["android"] = FakeProcess(returncode=1)
+
+        detail = BuildStatusPresenter().detail(job, None)
+        summary = BuildStatusPresenter().summary(job)
+
+        self.assertEqual("failed", detail["status"])
+        self.assertEqual("failed", summary["status"])
 
 
 if __name__ == "__main__":
