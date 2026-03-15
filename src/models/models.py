@@ -107,6 +107,7 @@ class BuildStatusResponse(BaseModel):
     build_name: Optional[str] = None
     build_number: Optional[str] = None
     queue_key: Optional[str] = None
+    platform_statuses: Dict = Field(default_factory=dict)
     processes: Dict
     progress: Dict
     stages: List[Dict] = Field(default_factory=list)
@@ -132,6 +133,8 @@ class BuildSummary(BaseModel):
     build_name: Optional[str] = None
     build_number: Optional[str] = None
     queue_key: Optional[str] = None
+    platform_statuses: Dict = Field(default_factory=dict)
+    stages: List[Dict] = Field(default_factory=list)
 
 
 class BuildsResponse(BaseModel):
