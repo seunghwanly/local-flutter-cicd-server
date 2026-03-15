@@ -12,6 +12,7 @@ from pydantic import ValidationError
 from ..models import (
     ActionResponse, BuildRequest, BuildStatusResponse, BuildsResponse,
     ManualBuildResponse, RootResponse, CleanupResponse, DiagnosticsResponse,
+    CancelBuildResponse,
     ShorebirdWebhookRequest,
 )
 from ..application import ConfigDiagnostics
@@ -110,6 +111,22 @@ def create_app() -> FastAPI:
         """
         builds = build_service.list_builds()
         return {"builds": builds}
+
+    @app.post("/build/{build_id}/cancel", response_model=CancelBuildResponse, tags=["Build Status"])
+    async def cancel_build(build_id: str):
+        build_status = build_service.cancel_build(build_id)
+        if not build_status:
+            raise HTTPException(status_code=404, detail="Build not found")
+
+        status = build_status.get("status")
+        if status in {"completed", "failed"}:
+            raise HTTPException(status_code=409, detail=f"Build already finished with status '{status}'")
+
+        return {
+            "status": "ok",
+            "build_id": build_id,
+            "message": "Build cancellation requested",
+        }
     
     @app.post("/github-action/build", response_model=ActionResponse, tags=["GitHub Actions"])
     async def handle_github_build_action(

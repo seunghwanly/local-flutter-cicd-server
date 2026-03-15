@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import os
+import signal
 import subprocess
+import time
 from dataclasses import dataclass
-from typing import Dict, List
+from typing import Callable, Dict, List, Optional
 
 
 @dataclass
@@ -29,6 +32,14 @@ class CommandExecutionError(RuntimeError):
         super().__init__(summary)
 
 
+class CommandCancelledError(RuntimeError):
+    """Raised when a command is stopped because the build was canceled."""
+
+    def __init__(self, command: List[str]) -> None:
+        self.command = command
+        super().__init__(f"Command cancelled: {' '.join(command)}")
+
+
 class CommandRunner:
     """Execute commands with a consistent subprocess configuration."""
 
@@ -48,10 +59,32 @@ class CommandRunner:
             bufsize=1 if line_buffered else -1,
             env=env,
             cwd=cwd,
+            start_new_session=True,
         )
 
     def wait(self, process: subprocess.Popen) -> int:
         return process.wait()
+
+    def terminate(self, process: subprocess.Popen, *, kill_after_seconds: float = 5.0) -> None:
+        if process.poll() is not None:
+            return
+
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            return
+
+        deadline = time.time() + kill_after_seconds
+        while process.poll() is None and time.time() < deadline:
+            time.sleep(0.1)
+
+        if process.poll() is not None:
+            return
+
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            return
 
     def iter_lines(self, process: subprocess.Popen):
         if process.stdout is None:
@@ -66,23 +99,34 @@ class CommandRunner:
         env: Dict[str, str],
         cwd: str,
         check: bool = True,
+        should_stop: Optional[Callable[[], bool]] = None,
     ) -> CompletedCommand:
-        completed = subprocess.run(
+        process = self.start(
             command,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
             env=env,
             cwd=cwd,
-            check=False,
         )
+        stdout = ""
+        while True:
+            if should_stop and should_stop():
+                self.terminate(process)
+                try:
+                    stdout, _ = process.communicate(timeout=1)
+                except subprocess.TimeoutExpired:
+                    stdout = ""
+                raise CommandCancelledError(command)
+            try:
+                stdout, _ = process.communicate(timeout=0.5)
+                break
+            except subprocess.TimeoutExpired:
+                continue
         result = CompletedCommand(
             args=command,
-            returncode=completed.returncode,
-            stdout=completed.stdout or "",
+            returncode=process.returncode,
+            stdout=stdout or "",
         )
-        if check and completed.returncode != 0:
-            raise CommandExecutionError(command, completed.returncode, result.stdout)
+        if check and process.returncode != 0:
+            raise CommandExecutionError(command, process.returncode, result.stdout)
         return result
 
     def run_checked(
@@ -91,5 +135,6 @@ class CommandRunner:
         *,
         env: Dict[str, str],
         cwd: str,
+        should_stop: Optional[Callable[[], bool]] = None,
     ) -> CompletedCommand:
-        return self.run(command, env=env, cwd=cwd, check=True)
+        return self.run(command, env=env, cwd=cwd, check=True, should_stop=should_stop)

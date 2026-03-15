@@ -37,6 +37,7 @@ class RepositoryWorkspaceManager:
         requested_flutter_version: Optional[str],
         platform: str,
         log,
+        should_cancel=None,
     ) -> PreparedRepositoryResult:
         repo_path = Path(repo_dir)
         repo_path.mkdir(parents=True, exist_ok=True)
@@ -48,6 +49,7 @@ class RepositoryWorkspaceManager:
             repo_path=repo_path,
             env=env,
             log=log,
+            should_cancel=should_cancel,
         )
 
         resolved_version = self._resolve_flutter_version(repo_path, requested_flutter_version)
@@ -63,12 +65,20 @@ class RepositoryWorkspaceManager:
             log(f"[{build_id}] 📚 Previously synced Flutter SDK version: {previous_version}")
 
         self._ensure_melos_sdk_path(build_id, repo_path, log)
-        self._run_fvm_use(build_id, repo_path, env, resolved_version, log)
+        self._run_fvm_use(build_id, repo_path, env, resolved_version, log, should_cancel=should_cancel)
 
         precache_ran = False
         should_precache_ios = platform in {"all", "ios"}
         if version_changed and should_precache_ios:
-            self._run_flutter_precache(build_id, repo_path, env, resolved_version, platform, log)
+            self._run_flutter_precache(
+                build_id,
+                repo_path,
+                env,
+                resolved_version,
+                platform,
+                log,
+                should_cancel=should_cancel,
+            )
             precache_ran = True
 
         self._write_previous_flutter_version(repo_url, branch_name, resolved_version)
@@ -83,6 +93,7 @@ class RepositoryWorkspaceManager:
         repo_path: Path,
         env: Dict[str, str],
         log,
+        should_cancel=None,
     ) -> None:
         fresh_clone = not (repo_path / ".git").exists()
         if fresh_clone:
@@ -91,19 +102,31 @@ class RepositoryWorkspaceManager:
                 ["git", "clone", "--depth", "1", "--single-branch", "--branch", branch_name, repo_url, str(repo_path)],
                 env=env,
                 cwd=str(repo_path.parent),
+                should_stop=should_cancel,
             )
             return
 
-        self.command_runner.run_checked(["git", "remote", "set-url", "origin", repo_url], env=env, cwd=str(repo_path))
+        self.command_runner.run_checked(
+            ["git", "remote", "set-url", "origin", repo_url],
+            env=env,
+            cwd=str(repo_path),
+            should_stop=should_cancel,
+        )
 
         log(f"[{build_id}] 🔄 Fetching latest branch state from origin/{branch_name}")
-        self.command_runner.run_checked(["git", "fetch", "origin"], env=env, cwd=str(repo_path))
+        self.command_runner.run_checked(
+            ["git", "fetch", "origin"],
+            env=env,
+            cwd=str(repo_path),
+            should_stop=should_cancel,
+        )
 
         branch_exists = self.command_runner.run(
             ["git", "ls-remote", "--heads", "origin", branch_name],
             env=env,
             cwd=str(repo_path),
             check=False,
+            should_stop=should_cancel,
         )
         if branch_exists.returncode != 0 or not branch_exists.stdout.strip():
             raise ValueError(f"Branch '{branch_name}' does not exist in remote repository")
@@ -113,22 +136,35 @@ class RepositoryWorkspaceManager:
             env=env,
             cwd=str(repo_path),
             check=False,
+            should_stop=should_cancel,
         )
         if local_branch.returncode == 0:
-            self.command_runner.run_checked(["git", "checkout", branch_name], env=env, cwd=str(repo_path))
+            self.command_runner.run_checked(
+                ["git", "checkout", branch_name],
+                env=env,
+                cwd=str(repo_path),
+                should_stop=should_cancel,
+            )
         else:
             self.command_runner.run_checked(
                 ["git", "checkout", "-B", branch_name, f"origin/{branch_name}"],
                 env=env,
                 cwd=str(repo_path),
+                should_stop=should_cancel,
             )
 
         self.command_runner.run_checked(
             ["git", "reset", "--hard", f"origin/{branch_name}"],
             env=env,
             cwd=str(repo_path),
+            should_stop=should_cancel,
         )
-        self.command_runner.run_checked(["git", "clean", "-fdx"], env=env, cwd=str(repo_path))
+        self.command_runner.run_checked(
+            ["git", "clean", "-fdx"],
+            env=env,
+            cwd=str(repo_path),
+            should_stop=should_cancel,
+        )
 
     def _resolve_flutter_version(
         self,
@@ -169,6 +205,7 @@ class RepositoryWorkspaceManager:
         env: Dict[str, str],
         flutter_version: str,
         log,
+        should_cancel=None,
     ) -> None:
         log(f"[{build_id}] 📦 Running fvm use {flutter_version}")
         try:
@@ -176,6 +213,7 @@ class RepositoryWorkspaceManager:
                 ["fvm", "use", flutter_version, "--force", "--skip-pub-get", "--skip-setup"],
                 env=env,
                 cwd=str(repo_path),
+                should_stop=should_cancel,
             )
         except CommandExecutionError as exc:
             raise RuntimeError(f"Failed to activate Flutter SDK {flutter_version}: {exc}") from exc
@@ -205,6 +243,7 @@ class RepositoryWorkspaceManager:
         flutter_version: str,
         platform: str,
         log,
+        should_cancel=None,
     ) -> None:
         log(
             f"[{build_id}] 🔄 Flutter SDK changed, running required precache for iOS "
@@ -215,6 +254,7 @@ class RepositoryWorkspaceManager:
                 ["fvm", "flutter", "precache", "--ios"],
                 env=env,
                 cwd=str(repo_path),
+                should_stop=should_cancel,
             )
         except CommandExecutionError as exc:
             raise RuntimeError(

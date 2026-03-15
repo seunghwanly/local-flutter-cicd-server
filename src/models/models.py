@@ -106,6 +106,9 @@ class BuildStatusResponse(BaseModel):
     branch_name: Optional[str] = None
     build_name: Optional[str] = None
     build_number: Optional[str] = None
+    cancel_reason: Optional[str] = None
+    cancel_requested_at: Optional[str] = None
+    canceled_at: Optional[str] = None
     queue_key: Optional[str] = None
     platform_statuses: Dict = Field(default_factory=dict)
     processes: Dict
@@ -132,6 +135,9 @@ class BuildSummary(BaseModel):
     branch_name: Optional[str] = None
     build_name: Optional[str] = None
     build_number: Optional[str] = None
+    cancel_reason: Optional[str] = None
+    cancel_requested_at: Optional[str] = None
+    canceled_at: Optional[str] = None
     queue_key: Optional[str] = None
     platform_statuses: Dict = Field(default_factory=dict)
     stages: List[Dict] = Field(default_factory=list)
@@ -229,6 +235,13 @@ class ManualBuildResponse(BaseModel):
     """수동 빌드 응답 모델"""
     status: str
     build_id: str
+
+
+class CancelBuildResponse(BaseModel):
+    """빌드 취소 응답 모델"""
+    status: str
+    build_id: str
+    message: str
 
 
 class RootResponse(BaseModel):
