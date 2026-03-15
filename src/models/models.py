@@ -110,6 +110,7 @@ class BuildStatusResponse(BaseModel):
     cancel_requested_at: Optional[str] = None
     canceled_at: Optional[str] = None
     queue_key: Optional[str] = None
+    platform_statuses: Dict = Field(default_factory=dict)
     processes: Dict
     progress: Dict
     stages: List[Dict] = Field(default_factory=list)
@@ -138,6 +139,8 @@ class BuildSummary(BaseModel):
     cancel_requested_at: Optional[str] = None
     canceled_at: Optional[str] = None
     queue_key: Optional[str] = None
+    platform_statuses: Dict = Field(default_factory=dict)
+    stages: List[Dict] = Field(default_factory=list)
 
 
 class BuildsResponse(BaseModel):

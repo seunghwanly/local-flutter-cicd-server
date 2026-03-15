@@ -305,6 +305,41 @@
             margin-right: 6px;
         }
 
+        .platform-status-list {
+            display: grid;
+            gap: 10px;
+            margin: 10px 0 4px;
+        }
+
+        .platform-status-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            border-radius: 12px;
+            padding: 10px 12px;
+        }
+
+        .platform-status-copy {
+            min-width: 0;
+        }
+
+        .platform-status-name {
+            font-size: 0.82rem;
+            color: var(--text-secondary);
+            margin-bottom: 4px;
+        }
+
+        .platform-status-message {
+            font-size: 0.88rem;
+            font-weight: 500;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
         .time {
             font-size: 0.8rem;
             color: var(--text-secondary);
@@ -684,6 +719,31 @@
             .replaceAll('_', ' ')
             .replace(/\b\w/g, (char) => char.toUpperCase());
 
+        const getPlatformLabel = (platform) => {
+            if (platform === 'android') return 'Android';
+            if (platform === 'ios') return 'iOS';
+            return String(platform || '').toUpperCase();
+        };
+
+        const renderPlatformStatuses = (platformStatuses) => {
+            const entries = Object.entries(platformStatuses || {});
+            if (!entries.length) return '';
+
+            return `
+                <div class="platform-status-list">
+                    ${entries.map(([platform, item]) => `
+                        <div class="platform-status-item">
+                            <div class="platform-status-copy">
+                                <div class="platform-status-name">${getPlatformLabel(platform)}</div>
+                                <div class="platform-status-message">${escapeHtml(item.message || '대기 중')}</div>
+                            </div>
+                            <span class="status-badge ${getStatusClass(item.status)}">${getStatusLabel(item.status)}</span>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        };
+
         let currentBuilds = {};
         let modalPollingInterval = null;
         let currentModalBuildId = null;
@@ -820,6 +880,8 @@
                                     <span class="info-value">${humanizeStage(build.stages.find(stage => stage.status === 'running')?.name || build.stages[build.stages.length - 1]?.name || '대기 중')}</span>
                                 </div>
                                 ` : ''}
+
+                                ${renderPlatformStatuses(build.platform_statuses)}
 
                                 <div class="time">
                                     요청 시각: ${formatTime(build.started_at)}

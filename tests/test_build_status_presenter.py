@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import Mock
 
 from src.application.build_status_presenter import BuildStatusPresenter
+from src.domain import BuildStatus
 from src.domain import BuildJob, BuildRequestData
 from src.domain.builds import BuildStatus
 
@@ -69,6 +71,42 @@ class BuildStatusPresenterTests(unittest.TestCase):
 
         self.assertEqual("failed", detail["status"])
         self.assertEqual("failed", summary["status"])
+    def test_summary_includes_platform_statuses_for_all_builds(self) -> None:
+        request = BuildRequestData(flavor="dev", platform="all")
+        job = BuildJob.create(
+            build_id="build-2",
+            request=request,
+            branch_name="develop",
+            queue_key="dev-develop",
+        )
+        job.mark_stage_completed("android_toolchain_ready", "Android ready")
+        job.mark_stage_completed("android_build", "Android ok")
+        job.mark_stage_failed("ios_build", "Exit code 1")
+        job.status = BuildStatus.FAILED
+
+        summary = BuildStatusPresenter().summary(job)
+
+        self.assertEqual("completed", summary["platform_statuses"]["android"]["status"])
+        self.assertEqual("failed", summary["platform_statuses"]["ios"]["status"])
+        self.assertTrue(any(stage["name"] == "android_build" for stage in summary["stages"]))
+
+    def test_detail_marks_platform_running_when_process_is_active(self) -> None:
+        request = BuildRequestData(flavor="dev", platform="android")
+        job = BuildJob.create(
+            build_id="build-3",
+            request=request,
+            branch_name="develop",
+            queue_key="dev-develop",
+        )
+        process = Mock()
+        process.poll.return_value = None
+        process.returncode = None
+        job.processes["android"] = process
+
+        detail = BuildStatusPresenter().detail(job, None)
+
+        self.assertEqual("running", detail["platform_statuses"]["android"]["status"])
+        self.assertTrue(detail["processes"]["android"]["running"])
 
 
 if __name__ == "__main__":
