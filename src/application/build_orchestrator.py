@@ -10,7 +10,7 @@ from typing import Dict, Optional
 from uuid import uuid4
 
 from ..core.queue_manager import queue_manager
-from ..domain import BuildJob, BuildProgress, BuildRequestData, BuildStatus, StageStatus
+from ..domain import BuildJob, BuildLogEntry, BuildProgress, BuildRequestData, BuildStatus, StageStatus
 from ..infrastructure import BuildLogger, CommandRunner, SetupExecutor
 from ..infrastructure.command_runner import CommandCancelledError
 from .build_environment import BuildEnvironmentAssembler
@@ -317,10 +317,23 @@ class BuildOrchestrator:
         return f"[{job.build_id}][{platform_name.upper()}] {line}"
 
     def _log(self, job: BuildJob, message: str) -> None:
+        timestamp = datetime.now().isoformat()
+        active_stages = [
+            name for name, stage in job.stages.items() if stage.status == StageStatus.RUNNING
+        ]
         with job.lock:
             job.logs.append(message)
+            job.log_entries.append(
+                BuildLogEntry(
+                    message=message,
+                    timestamp=timestamp,
+                    stages=active_stages,
+                )
+            )
             if len(job.logs) > MAX_LOG_LINES:
                 job.logs = job.logs[-KEEP_LOG_LINES:]
+            if len(job.log_entries) > MAX_LOG_LINES:
+                job.log_entries = job.log_entries[-KEEP_LOG_LINES:]
         logger_instance = self.build_loggers.get(job.build_id)
         if logger_instance:
             logger_instance.log(message)

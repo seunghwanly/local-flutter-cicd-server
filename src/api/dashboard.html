@@ -526,7 +526,21 @@
             background: rgba(255,255,255,0.04);
             border: 1px solid rgba(255,255,255,0.06);
             border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .stage-accordion {
+            margin: 0;
+        }
+
+        .stage-summary {
+            list-style: none;
+            cursor: pointer;
             padding: 12px 14px;
+        }
+
+        .stage-summary::-webkit-details-marker {
+            display: none;
         }
 
         .stage-top {
@@ -535,6 +549,13 @@
             gap: 12px;
             align-items: center;
             margin-bottom: 6px;
+        }
+
+        .stage-top-right {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-left: 12px;
         }
 
         .stage-name {
@@ -546,6 +567,51 @@
             color: var(--text-secondary);
             font-size: 0.84rem;
             line-height: 1.4;
+        }
+
+        .stage-meta {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-top: 8px;
+            color: var(--text-secondary);
+            font-size: 0.76rem;
+        }
+
+        .stage-chevron {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            transition: transform 0.2s ease;
+        }
+
+        .stage-accordion[open] .stage-chevron {
+            transform: rotate(90deg);
+        }
+
+        .stage-log-panel {
+            border-top: 1px solid rgba(255,255,255,0.06);
+            padding: 12px 14px 14px;
+            background: rgba(15, 23, 42, 0.5);
+        }
+
+        .stage-log-title {
+            font-size: 0.76rem;
+            color: var(--text-secondary);
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+
+        .stage-log-list {
+            display: grid;
+            gap: 6px;
+            max-height: 180px;
+            overflow-y: auto;
+        }
+
+        .stage-log-empty {
+            color: var(--text-secondary);
+            font-size: 0.8rem;
         }
 
         .log-line {
@@ -727,6 +793,53 @@
         const humanizeStage = (value) => (value || '')
             .replaceAll('_', ' ')
             .replace(/\b\w/g, (char) => char.toUpperCase());
+
+        const formatStageTimeRange = (stage) => {
+            const started = stage.started_at ? formatTime(stage.started_at) : null;
+            const completed = stage.completed_at ? formatTime(stage.completed_at) : null;
+            if (started && completed) return `${started} - ${completed}`;
+            if (started) return `시작: ${started}`;
+            if (completed) return `완료: ${completed}`;
+            return '아직 실행되지 않음';
+        };
+
+        const renderStageLogs = (logs) => {
+            if (!logs || !logs.length) {
+                return '<div class="stage-log-empty">이 스텝에 기록된 로그가 아직 없습니다.</div>';
+            }
+            return `<div class="stage-log-list">${logs.map(formatLogLine).join('')}</div>`;
+        };
+
+        const renderStageItem = (stage) => {
+            const isOpen = stage.status === 'running' || stage.status === 'failed';
+            const logCount = Array.isArray(stage.logs) ? stage.logs.length : 0;
+            return `
+                <div class="stage-item">
+                    <details class="stage-accordion" ${isOpen ? 'open' : ''}>
+                        <summary class="stage-summary">
+                            <div class="stage-top">
+                                <div>
+                                    <div class="stage-name">${humanizeStage(stage.name)}</div>
+                                    <div class="stage-message">${escapeHtml(stage.message || '대기 중')}</div>
+                                    <div class="stage-meta">
+                                        <span>${formatStageTimeRange(stage)}</span>
+                                        <span>로그 ${logCount}개</span>
+                                    </div>
+                                </div>
+                                <div class="stage-top-right">
+                                    <span class="status-badge ${getStatusClass(stage.status)}">${getStatusLabel(stage.status)}</span>
+                                    <span class="stage-chevron">›</span>
+                                </div>
+                            </div>
+                        </summary>
+                        <div class="stage-log-panel">
+                            <div class="stage-log-title">Step Logs</div>
+                            ${renderStageLogs(stage.logs)}
+                        </div>
+                    </details>
+                </div>
+            `;
+        };
 
         const getPlatformLabel = (platform) => {
             if (platform === 'android') return 'Android';
@@ -965,15 +1078,7 @@
             const stageContainer = document.getElementById('modal-stages');
             const stages = data.stages || [];
             stageContainer.innerHTML = stages.length
-                ? stages.map((stage) => `
-                    <div class="stage-item">
-                        <div class="stage-top">
-                            <div class="stage-name">${humanizeStage(stage.name)}</div>
-                            <span class="status-badge ${getStatusClass(stage.status)}">${getStatusLabel(stage.status)}</span>
-                        </div>
-                        <div class="stage-message">${escapeHtml(stage.message || '대기 중')}</div>
-                    </div>
-                `).join('')
+                ? stages.map(renderStageItem).join('')
                 : '<div class="stage-item">현재 실행된 파이프라인 스테이지가 없습니다.</div>';
             
             const logContainer = document.getElementById('modal-logs');

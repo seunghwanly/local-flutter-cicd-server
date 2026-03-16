@@ -47,6 +47,15 @@ class BuildRequestData:
 
 
 @dataclass
+class BuildLogEntry:
+    """Structured log entry with optional stage attribution."""
+
+    message: str
+    timestamp: str
+    stages: List[str] = field(default_factory=list)
+
+
+@dataclass
 class BuildProgress:
     """Structured progress for a single platform build."""
 
@@ -91,6 +100,7 @@ class BuildJob:
     canceled_at: Optional[str] = None
     status: BuildStatus = BuildStatus.PENDING
     logs: List[str] = field(default_factory=list)
+    log_entries: List[BuildLogEntry] = field(default_factory=list)
     progress: Dict[str, BuildProgress] = field(default_factory=dict)
     stages: Dict[str, StageState] = field(default_factory=dict)
     processes: Dict[str, Any] = field(default_factory=dict)
@@ -200,6 +210,14 @@ class BuildJob:
                 "canceled_at": self.canceled_at,
                 "status": self.status.value,
                 "logs": list(self.logs),
+                "log_entries": [
+                    {
+                        "message": entry.message,
+                        "timestamp": entry.timestamp,
+                        "stages": list(entry.stages),
+                    }
+                    for entry in self.log_entries
+                ],
                 "progress": {
                     k: {
                         "current_step": v.current_step,
@@ -245,6 +263,14 @@ class BuildJob:
         job.canceled_at = data.get("canceled_at")
         job.status = BuildStatus(data.get("status", "pending"))
         job.logs = data.get("logs", [])
+        job.log_entries = [
+            BuildLogEntry(
+                message=entry.get("message", ""),
+                timestamp=entry.get("timestamp", ""),
+                stages=entry.get("stages", []),
+            )
+            for entry in data.get("log_entries", [])
+        ]
 
         if "progress" in data:
             for k, p_data in data["progress"].items():
