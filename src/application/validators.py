@@ -49,8 +49,6 @@ class BuildRequestValidator:
         if request.trigger_source in {"shorebird", "shorebird_manual"}:
             if not request.build_name:
                 raise ValueError("Shorebird patch requires build_name as release version")
-            if request.platform != "ios":
-                raise ValueError("Shorebird patch supports only ios platform")
 
         return request
 

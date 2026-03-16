@@ -22,17 +22,18 @@ class BuildRequestValidatorTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "build_name as release version"):
             self.validator.validate(request)
 
-    def test_shorebird_manual_supports_only_ios(self) -> None:
+    def test_shorebird_manual_allows_android_platform(self) -> None:
         request = BuildRequestData(
             flavor="prod",
-            platform="all",
+            platform="android",
             trigger_source="shorebird_manual",
             build_name="2.2.1+689",
             branch_name="main",
         )
 
-        with self.assertRaisesRegex(ValueError, "only ios platform"):
-            self.validator.validate(request)
+        validated = self.validator.validate(request)
+
+        self.assertEqual("android", validated.platform)
 
     def test_regular_build_can_omit_build_name(self) -> None:
         request = BuildRequestData(

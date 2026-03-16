@@ -31,10 +31,6 @@ USE_BUNDLER=false
 if [ -f "Gemfile" ]; then
     USE_BUNDLER=true
 fi
-if [[ "${FASTLANE_LANE:-beta}" == patch_* ]]; then
-    echo "❌ Shorebird patch is only supported for iOS in this pipeline"
-    exit 1
-fi
 
 echo "  ✅ 독립 환경 설정 완료"
 echo ""
@@ -57,6 +53,10 @@ fi
 FASTLANE_LANE="${FASTLANE_LANE:-beta}"
 BUILD_NAME="${BUILD_NAME:-}"
 BUILD_NUMBER="${BUILD_NUMBER:-}"
+PATCH_MODE=false
+if [[ "$FASTLANE_LANE" == patch_* ]]; then
+    PATCH_MODE=true
+fi
 
 # Fastlane 명령 구성
 if [ "$USE_BUNDLER" = true ]; then
@@ -65,12 +65,34 @@ else
     FASTLANE_CMD=(fvm exec fastlane "$FASTLANE_LANE")
 fi
 
-if [ -n "$BUILD_NAME" ] && [ -n "$BUILD_NUMBER" ]; then
-    FASTLANE_CMD+=("build_name:$BUILD_NAME" "build_number:$BUILD_NUMBER")
-elif [ -n "$BUILD_NAME" ]; then
-    FASTLANE_CMD+=("build_name:$BUILD_NAME")
-elif [ -n "$BUILD_NUMBER" ]; then
-    FASTLANE_CMD+=("build_number:$BUILD_NUMBER")
+if [ "$PATCH_MODE" = true ]; then
+    if [ -z "$BUILD_NAME" ]; then
+        echo "❌ Shorebird patch requires BUILD_NAME as release_version"
+        exit 1
+    fi
+
+    echo "🐦 Shorebird patch mode detected"
+    echo "  • flavor: $FLAVOR"
+    echo "  • branch_name: ${BRANCH_NAME:-unknown}"
+    echo "  • release_version: $BUILD_NAME"
+    echo "  • platform: android"
+    echo "  • lane: $FASTLANE_LANE"
+    if [ -n "$BUILD_NUMBER" ]; then
+        echo "ℹ️ patch_number=$BUILD_NUMBER (현재 로그/상태 추적용으로만 유지)"
+    fi
+
+    FASTLANE_CMD+=("flavor:$FLAVOR" "release_version:$BUILD_NAME" "branch_name:${BRANCH_NAME:-}")
+    if [ -n "$BUILD_NUMBER" ]; then
+        FASTLANE_CMD+=("patch_number:$BUILD_NUMBER")
+    fi
+else
+    if [ -n "$BUILD_NAME" ] && [ -n "$BUILD_NUMBER" ]; then
+        FASTLANE_CMD+=("build_name:$BUILD_NAME" "build_number:$BUILD_NUMBER")
+    elif [ -n "$BUILD_NAME" ]; then
+        FASTLANE_CMD+=("build_name:$BUILD_NAME")
+    elif [ -n "$BUILD_NUMBER" ]; then
+        FASTLANE_CMD+=("build_number:$BUILD_NUMBER")
+    fi
 fi
 
 # Fastlane 실행
