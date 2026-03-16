@@ -19,10 +19,10 @@ class CapturingRepositoryWorkspaceManager(RepositoryWorkspaceManager):
     def _sync_repository(self, **kwargs) -> None:  # type: ignore[override]
         self.calls.append(("sync", kwargs["branch_name"]))
 
-    def _run_fvm_use(self, build_id, repo_path, env, flutter_version, log) -> None:
+    def _run_fvm_use(self, build_id, repo_path, env, flutter_version, log, should_cancel=None) -> None:
         self.calls.append(("fvm_use", flutter_version))
 
-    def _run_flutter_precache(self, build_id, repo_path, env, flutter_version, platform, log) -> None:
+    def _run_flutter_precache(self, build_id, repo_path, env, flutter_version, platform, log, should_cancel=None) -> None:
         self.calls.append(("precache", f"{flutter_version}:{platform}"))
 
     def _read_previous_flutter_version(self, repo_url: str, branch_name: str) -> str | None:
@@ -42,11 +42,11 @@ class FakeCommandRunner:
     def __init__(self) -> None:
         self.calls: list[tuple[str, ...]] = []
 
-    def run_checked(self, command, *, env, cwd):
+    def run_checked(self, command, *, env, cwd, should_stop=None):
         self.calls.append(tuple(command))
         return CompletedCommand(args=list(command), returncode=0, stdout="")
 
-    def run(self, command, *, env, cwd, check=True):
+    def run(self, command, *, env, cwd, check=True, should_stop=None):
         self.calls.append(tuple(command))
         return CompletedCommand(args=list(command), returncode=0, stdout="")
 
