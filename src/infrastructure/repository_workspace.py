@@ -10,21 +10,35 @@ from typing import Dict, Optional
 
 from ..core.config import get_shared_cache_dir
 from .command_runner import CommandExecutionError, CommandRunner
+from .workspace_pool import WorkspacePoolManager, WorkspaceSlotLease
 
 
 class PreparedRepositoryResult:
     """Result of repository sync and Flutter SDK alignment."""
 
-    def __init__(self, flutter_version: Optional[str], precache_ran: bool) -> None:
+    def __init__(
+        self,
+        flutter_version: Optional[str],
+        precache_ran: bool,
+        repo_dir: str,
+        workspace_lease: WorkspaceSlotLease | None,
+    ) -> None:
         self.flutter_version = flutter_version
         self.precache_ran = precache_ran
+        self.repo_dir = repo_dir
+        self.workspace_lease = workspace_lease
 
 
 class RepositoryWorkspaceManager:
     """Prepare a repo checkout and align the Flutter SDK for a build."""
 
-    def __init__(self, command_runner: CommandRunner) -> None:
+    def __init__(
+        self,
+        command_runner: CommandRunner,
+        workspace_pool: WorkspacePoolManager | None = None,
+    ) -> None:
         self.command_runner = command_runner
+        self.workspace_pool = workspace_pool or WorkspacePoolManager()
 
     def prepare(
         self,
@@ -39,50 +53,73 @@ class RepositoryWorkspaceManager:
         log,
         should_cancel=None,
     ) -> PreparedRepositoryResult:
-        repo_path = Path(repo_dir)
-        repo_path.mkdir(parents=True, exist_ok=True)
-
-        self._sync_repository(
+        seeded_version = requested_flutter_version or self._read_previous_flutter_version(repo_url, branch_name)
+        workspace_lease = self.workspace_pool.acquire(
             build_id=build_id,
             repo_url=repo_url,
             branch_name=branch_name,
-            repo_path=repo_path,
-            env=env,
+            flutter_version=seeded_version,
+            platform=platform,
+            cocoapods_version=env.get("COCOAPODS_VERSION"),
             log=log,
-            should_cancel=should_cancel,
         )
+        repo_path = workspace_lease.repo_dir
 
-        resolved_version = self._resolve_flutter_version(repo_path, requested_flutter_version)
-        if not resolved_version:
-            log(f"[{build_id}] ⚠️ Flutter SDK version could not be resolved from request or repository")
-            return PreparedRepositoryResult(flutter_version=None, precache_ran=False)
-
-        previous_version = self._read_previous_flutter_version(repo_url, branch_name)
-        version_changed = previous_version is not None and previous_version != resolved_version
-
-        log(f"[{build_id}] 🔧 Effective Flutter SDK version: {resolved_version}")
-        if previous_version:
-            log(f"[{build_id}] 📚 Previously synced Flutter SDK version: {previous_version}")
-
-        self._ensure_melos_sdk_path(build_id, repo_path, log)
-        self._run_fvm_use(build_id, repo_path, env, resolved_version, log, should_cancel=should_cancel)
-
-        precache_ran = False
-        should_precache_ios = platform in {"all", "ios"}
-        if version_changed and should_precache_ios:
-            self._run_flutter_precache(
-                build_id,
-                repo_path,
-                env,
-                resolved_version,
-                platform,
-                log,
+        try:
+            self._sync_repository(
+                build_id=build_id,
+                repo_url=repo_url,
+                branch_name=branch_name,
+                repo_path=repo_path,
+                env=env,
+                log=log,
                 should_cancel=should_cancel,
             )
-            precache_ran = True
 
-        self._write_previous_flutter_version(repo_url, branch_name, resolved_version)
-        return PreparedRepositoryResult(flutter_version=resolved_version, precache_ran=precache_ran)
+            resolved_version = self._resolve_flutter_version(repo_path, requested_flutter_version)
+            if not resolved_version:
+                log(f"[{build_id}] ⚠️ Flutter SDK version could not be resolved from request or repository")
+                return PreparedRepositoryResult(
+                    flutter_version=None,
+                    precache_ran=False,
+                    repo_dir=str(repo_path),
+                    workspace_lease=workspace_lease,
+                )
+
+            previous_version = self._read_previous_flutter_version(repo_url, branch_name)
+            version_changed = previous_version is not None and previous_version != resolved_version
+
+            log(f"[{build_id}] 🔧 Effective Flutter SDK version: {resolved_version}")
+            if previous_version:
+                log(f"[{build_id}] 📚 Previously synced Flutter SDK version: {previous_version}")
+
+            self._ensure_melos_sdk_path(build_id, repo_path, log)
+            self._run_fvm_use(build_id, repo_path, env, resolved_version, log, should_cancel=should_cancel)
+
+            precache_ran = False
+            should_precache_ios = platform in {"all", "ios"}
+            if version_changed and should_precache_ios:
+                self._run_flutter_precache(
+                    build_id,
+                    repo_path,
+                    env,
+                    resolved_version,
+                    platform,
+                    log,
+                    should_cancel=should_cancel,
+                )
+                precache_ran = True
+
+            self._write_previous_flutter_version(repo_url, branch_name, resolved_version)
+            return PreparedRepositoryResult(
+                flutter_version=resolved_version,
+                precache_ran=precache_ran,
+                repo_dir=str(repo_path),
+                workspace_lease=workspace_lease,
+            )
+        except Exception:
+            workspace_lease.release()
+            raise
 
     def _sync_repository(
         self,

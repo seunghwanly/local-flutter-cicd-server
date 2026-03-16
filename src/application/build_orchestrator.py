@@ -61,9 +61,7 @@ class BuildOrchestrator:
             f"{validated_request.flavor.upper()}_BRANCH_NAME", "develop"
         )
         build_id = self._generate_build_id(validated_request.flavor, validated_request.platform)
-        queue_key = queue_manager.get_queue_key(
-            branch_name, validated_request.flutter_sdk_version, validated_request.flavor
-        )
+        queue_key = build_id
 
         job = BuildJob.create(build_id, validated_request, branch_name, queue_key)
         job.mark_stage_completed("request_validated", "Build request validated")
@@ -117,6 +115,7 @@ class BuildOrchestrator:
         return f"{flavor}-{platform}-{timestamp}-{uuid4().hex[:8]}"
 
     def _run_pipeline(self, job: BuildJob, request: BuildRequestData) -> None:
+        runtime = None
         if self._is_canceled(job):
             self._log(job, f"[{job.build_id}] 🛑 Skipping pipeline because cancellation was requested before execution")
             self.repository.save(job)
@@ -137,12 +136,10 @@ class BuildOrchestrator:
                 self.repository.save(job)
                 return
             job.mark_stage_completed("environment_prepared", "Isolated build environment ready")
-            env = runtime.env
-
-            if not self._run_setup_script(job, env):
+            if not self._run_setup_script(job, runtime):
                 return
 
-            if not self._run_build_scripts(job, env):
+            if not self._run_build_scripts(job, runtime):
                 if not self._is_canceled(job):
                     job.status = BuildStatus.FAILED
                 self.repository.save(job)
@@ -166,8 +163,12 @@ class BuildOrchestrator:
             self._log(job, f"[{job.build_id}] 💥 Build pipeline failed: {exc}")
             logger.exception("Build pipeline failed for %s", job.build_id)
             self.repository.save(job)
+        finally:
+            if runtime and runtime.workspace_lease is not None:
+                runtime.workspace_lease.release()
+                self._log(job, f"[{job.build_id}] 🔓 Workspace slot released: {runtime.slot_key}/{runtime.slot_id}")
 
-    def _run_setup_script(self, job: BuildJob, env: Dict[str, str]) -> bool:
+    def _run_setup_script(self, job: BuildJob, runtime) -> bool:
         if self._is_canceled(job):
             self._mark_canceled(job, "Build canceled before setup")
             self.repository.save(job)
@@ -177,8 +178,7 @@ class BuildOrchestrator:
         try:
             self.setup_executor.run_setup(
                 build_id=job.build_id,
-                repo_dir=env["LOCAL_DIR"],
-                env=env,
+                context=runtime,
                 log=lambda message: self._log(job, message),
                 should_cancel=lambda: self._is_canceled(job),
             )
@@ -199,16 +199,16 @@ class BuildOrchestrator:
             self.repository.save(job)
             return False
 
-    def _run_build_scripts(self, job: BuildJob, env: Dict[str, str]) -> bool:
+    def _run_build_scripts(self, job: BuildJob, runtime) -> bool:
         if self._is_canceled(job):
             self._mark_canceled(job, "Build canceled before platform build")
             self.repository.save(job)
             return False
         commands = []
         if job.platform in {"all", "android"}:
-            commands.append(("android", self._build_command("action/1_android.sh"), self._build_env(env, job)))
+            commands.append(("android", self._build_command("action/1_android.sh"), runtime.build_env()))
         if job.platform in {"all", "ios"}:
-            commands.append(("ios", self._build_command("action/1_ios.sh"), self._build_env(env, job)))
+            commands.append(("ios", self._build_command("action/1_ios.sh"), runtime.build_env()))
         if not commands:
             self._log(job, f"[{job.build_id}] ❌ No build processes started")
             return False
@@ -216,14 +216,27 @@ class BuildOrchestrator:
         processes = []
         for platform_name, command, command_env in commands:
             try:
+                preflight_stage = f"{platform_name}_preflight"
                 toolchain_stage = f"{platform_name}_toolchain_ready"
                 build_stage = f"{platform_name}_build"
+                if preflight_stage in job.stages:
+                    job.mark_stage_running(preflight_stage, f"Running {platform_name} preflight checks")
+                    self.setup_executor.prepare_platform_preflight(
+                        build_id=job.build_id,
+                        platform=platform_name,
+                        context=runtime,
+                        log=lambda message: self._log(job, message),
+                        should_cancel=lambda: self._is_canceled(job),
+                    )
+                    if self._is_canceled(job):
+                        self._mark_canceled(job, f"{platform_name.title()} build canceled during preflight")
+                        return False
+                    job.mark_stage_completed(preflight_stage, f"{platform_name.title()} preflight checks passed")
                 job.mark_stage_running(toolchain_stage, f"Preparing {platform_name} toolchain")
                 self.setup_executor.prepare_platform_toolchain(
                     build_id=job.build_id,
                     platform=platform_name,
-                    repo_dir=env["LOCAL_DIR"],
-                    env=env,
+                    context=runtime,
                     log=lambda message: self._log(job, message),
                     should_cancel=lambda: self._is_canceled(job),
                 )
@@ -232,11 +245,16 @@ class BuildOrchestrator:
                     return False
                 job.mark_stage_completed(toolchain_stage, f"{platform_name.title()} toolchain ready")
             except CommandCancelledError:
-                self._mark_canceled(job, f"{platform_name.title()} build canceled during toolchain setup")
+                self._mark_canceled(job, f"{platform_name.title()} build canceled during setup")
                 return False
             except Exception as exc:
-                job.mark_stage_failed(toolchain_stage, str(exc))
-                self._log(job, f"[{job.build_id}] ❌ {platform_name.title()} toolchain setup failed: {exc}")
+                failed_stage = (
+                    preflight_stage
+                    if preflight_stage in job.stages and job.stages[preflight_stage].status == StageStatus.RUNNING
+                    else toolchain_stage
+                )
+                job.mark_stage_failed(failed_stage, str(exc))
+                self._log(job, f"[{job.build_id}] ❌ {platform_name.title()} setup failed: {exc}")
                 return False
             job.mark_stage_running(build_stage, f"{platform_name.title()} build started")
             self._log(job, f"[{job.build_id}] Starting {platform_name} build...")
@@ -270,14 +288,6 @@ class BuildOrchestrator:
 
     def _build_command(self, script_path: str) -> list[str]:
         return ["bash", script_path]
-
-    def _build_env(self, env: Dict[str, str], job: BuildJob) -> Dict[str, str]:
-        command_env = dict(env)
-        if job.build_name:
-            command_env["BUILD_NAME"] = job.build_name
-        if job.build_number:
-            command_env["BUILD_NUMBER"] = job.build_number
-        return command_env
 
     def _monitor_process_output(self, job: BuildJob, platform_name: str, process) -> None:
         self._initialize_progress(job, platform_name)

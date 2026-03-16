@@ -124,6 +124,8 @@ class BuildJob:
             "dependencies_installed",
         ]
         if request.platform in {"all", "android"}:
+            if request.trigger_source.startswith("shorebird"):
+                stage_names.append("android_preflight")
             stage_names.extend(["android_toolchain_ready", "android_build"])
         if request.platform in {"all", "ios"}:
             stage_names.extend(["ios_toolchain_ready", "ios_build"])

@@ -6,6 +6,7 @@ from collections import defaultdict
 from pathlib import Path
 from unittest.mock import patch
 
+from src.core import BuildRuntimeContext
 from src.infrastructure.command_runner import CompletedCommand
 from src.infrastructure.setup_executor import SetupExecutor
 
@@ -59,8 +60,11 @@ class SetupExecutorTests(unittest.TestCase):
 
             executor.run_setup(
                 build_id="build-1",
-                repo_dir=str(repo_dir),
-                env={"PUB_CACHE": str(pub_cache)},
+                context=BuildRuntimeContext(
+                    env={"PUB_CACHE": str(pub_cache)},
+                    repo_dir=str(repo_dir),
+                    workspace=tmp,
+                ),
                 log=logs.append,
             )
 
@@ -89,8 +93,11 @@ class SetupExecutorTests(unittest.TestCase):
 
             executor.run_setup(
                 build_id="build-melos",
-                repo_dir=str(repo_dir),
-                env={"PUB_CACHE": str(pub_cache)},
+                context=BuildRuntimeContext(
+                    env={"PUB_CACHE": str(pub_cache)},
+                    repo_dir=str(repo_dir),
+                    workspace=tmp,
+                ),
                 log=lambda _: None,
             )
 
@@ -128,8 +135,11 @@ class SetupExecutorTests(unittest.TestCase):
             executor.prepare_platform_toolchain(
                 build_id="build-ios",
                 platform="ios",
-                repo_dir=str(repo_dir),
-                env={"GEM_HOME": "/tmp/gems", "COCOAPODS_VERSION": "1.16.2"},
+                context=BuildRuntimeContext(
+                    env={"GEM_HOME": "/tmp/gems", "COCOAPODS_VERSION": "1.16.2"},
+                    repo_dir=str(repo_dir),
+                    workspace=tmp,
+                ),
                 log=logs.append,
             )
 
@@ -167,8 +177,11 @@ class SetupExecutorTests(unittest.TestCase):
             executor.prepare_platform_toolchain(
                 build_id="build-android",
                 platform="android",
-                repo_dir=str(repo_dir),
-                env={"GEM_HOME": "/tmp/gems", "RUBY_VERSION": "3.2.0"},
+                context=BuildRuntimeContext(
+                    env={"GEM_HOME": "/tmp/gems", "RUBY_VERSION": "3.2.0"},
+                    repo_dir=str(repo_dir),
+                    workspace=tmp,
+                ),
                 log=logs.append,
             )
 
@@ -179,7 +192,7 @@ class SetupExecutorTests(unittest.TestCase):
         runner = FakeCommandRunner()
         executor = SetupExecutor(runner)
 
-        runner.add_response(["rbenv", "versions", "--bare"], stdout="3.1.0\n3.2.0\n")
+        runner.add_response(["rbenv", "versions", "--bare"], stdout="3.1.0\n3.3.9\n")
         runner.add_response(["ruby", "-e", "print RUBY_VERSION"], stdout="3.1.0")
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -203,62 +216,52 @@ class SetupExecutorTests(unittest.TestCase):
                 executor.prepare_platform_toolchain(
                     build_id="build-android",
                     platform="android",
-                    repo_dir=str(repo_dir),
-                    env={"GEM_HOME": "/tmp/gems"},
+                    context=BuildRuntimeContext(
+                        env={"GEM_HOME": "/tmp/gems"},
+                        repo_dir=str(repo_dir),
+                        workspace=tmp,
+                    ),
                     log=lambda _: None,
                 )
 
-    def test_repair_incompatible_shorebird_patch_artifact_on_arm64(self) -> None:
+    def test_prepare_android_toolchain_clears_shorebird_cache_when_patch_binary_arch_mismatches(self) -> None:
         runner = FakeCommandRunner()
         executor = SetupExecutor(runner)
         logs: list[str] = []
 
+        runner.add_response(["shorebird", "cache", "clean"], stdout="cache cleaned")
+
         with tempfile.TemporaryDirectory() as tmp:
-            home_dir = Path(tmp)
-            patch_dir = home_dir / ".shorebird" / "bin" / "cache" / "artifacts" / "patch"
-            patch_dir.mkdir(parents=True)
-            patch_binary = patch_dir / "patch"
-            patch_binary.write_text("binary", encoding="utf-8")
+            repo_dir = Path(tmp) / "repo"
+            android_dir = repo_dir / "android"
+            android_dir.mkdir(parents=True)
+
+            patch_binary = Path("/tmp/shorebird/bin/cache/artifacts/patch/patch").resolve()
+            patch_binary.parent.mkdir(parents=True, exist_ok=True)
+            patch_binary.write_text("", encoding="utf-8")
+
             runner.add_response(
                 ["file", str(patch_binary)],
-                stdout=f"{patch_binary}: Mach-O 64-bit executable x86_64\n",
+                stdout=f"{patch_binary}: Mach-O 64-bit executable x86_64",
             )
-
-            with patch("src.infrastructure.setup_executor.platform.machine", return_value="arm64"):
-                executor._repair_incompatible_shorebird_patch_artifact(
-                    cwd=home_dir,
-                    env={"HOME": str(home_dir), "TRIGGER_SOURCE": "shorebird_manual"},
+            with (
+                patch("shutil.which", return_value="/tmp/shorebird/bin/shorebird"),
+                patch("platform.machine", return_value="arm64"),
+            ):
+                executor.prepare_platform_preflight(
                     build_id="build-shorebird",
+                    platform="android",
+                    context=BuildRuntimeContext(
+                        env={"GEM_HOME": "/tmp/gems", "PATH": "/tmp/shorebird/bin:/usr/bin"},
+                        repo_dir=str(repo_dir),
+                        workspace=tmp,
+                        trigger_source="shorebird_manual",
+                    ),
                     log=logs.append,
                 )
 
-            self.assertFalse(patch_dir.exists())
-
-        self.assertIn(("file", str(patch_binary)), runner.calls)
-        self.assertTrue(any("Removing incompatible Shorebird patch artifact cache" in line for line in logs))
-
-    def test_repair_shorebird_patch_artifact_skips_for_non_shorebird_build(self) -> None:
-        runner = FakeCommandRunner()
-        executor = SetupExecutor(runner)
-
-        with tempfile.TemporaryDirectory() as tmp:
-            home_dir = Path(tmp)
-            patch_dir = home_dir / ".shorebird" / "bin" / "cache" / "artifacts" / "patch"
-            patch_dir.mkdir(parents=True)
-            patch_binary = patch_dir / "patch"
-            patch_binary.write_text("binary", encoding="utf-8")
-
-            with patch("src.infrastructure.setup_executor.platform.machine", return_value="arm64"):
-                executor._repair_incompatible_shorebird_patch_artifact(
-                    cwd=home_dir,
-                    env={"HOME": str(home_dir), "TRIGGER_SOURCE": "manual"},
-                    build_id="build-manual",
-                    log=lambda _: None,
-                )
-
-            self.assertTrue(patch_binary.exists())
-
-        self.assertEqual([], runner.calls)
+        self.assertIn(("shorebird", "cache", "clean"), runner.calls)
+        self.assertTrue(any("architecture mismatch" in line for line in logs))
 
 
 if __name__ == "__main__":

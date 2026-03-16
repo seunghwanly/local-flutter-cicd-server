@@ -2,11 +2,23 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+from dataclasses import dataclass
 from pathlib import Path
 from unittest.mock import patch
 
 from src.infrastructure.command_runner import CompletedCommand
 from src.infrastructure.repository_workspace import RepositoryWorkspaceManager
+
+
+@dataclass
+class FakeWorkspaceLease:
+    slot_key: str
+    slot_dir: Path
+    repo_dir: Path
+    slot_id: str = "slot-1"
+
+    def release(self) -> None:
+        return
 
 
 class CapturingRepositoryWorkspaceManager(RepositoryWorkspaceManager):
@@ -15,6 +27,23 @@ class CapturingRepositoryWorkspaceManager(RepositoryWorkspaceManager):
         self.calls: list[tuple[str, str]] = []
         self.previous_version: str | None = None
         self.written_version: str | None = None
+        self.next_repo_dir: Path | None = None
+
+        class FakePool:
+            def __init__(self, manager: "CapturingRepositoryWorkspaceManager") -> None:
+                self.manager = manager
+
+            def acquire(self, **kwargs):
+                repo_dir = self.manager.next_repo_dir
+                if repo_dir is None:
+                    raise RuntimeError("next_repo_dir not set")
+                return FakeWorkspaceLease(
+                    slot_key="test-slot",
+                    slot_dir=repo_dir.parent / ".slot",
+                    repo_dir=repo_dir,
+                )
+
+        self.workspace_pool = FakePool(self)
 
     def _sync_repository(self, **kwargs) -> None:  # type: ignore[override]
         self.calls.append(("sync", kwargs["branch_name"]))
@@ -61,6 +90,7 @@ class RepositoryWorkspaceManagerTests(unittest.TestCase):
             repo_dir = Path(tmp) / "repo"
             repo_dir.mkdir()
             (repo_dir / ".fvmrc").write_text('{"flutter":"3.24.0"}', encoding="utf-8")
+            manager.next_repo_dir = repo_dir
 
             prepared = manager.prepare(
                 build_id="build-1",
@@ -87,6 +117,7 @@ class RepositoryWorkspaceManagerTests(unittest.TestCase):
             repo_dir = Path(tmp) / "repo"
             repo_dir.mkdir()
             (repo_dir / ".fvmrc").write_text('{"flutter":"3.24.0"}', encoding="utf-8")
+            manager.next_repo_dir = repo_dir
 
             prepared = manager.prepare(
                 build_id="build-android",

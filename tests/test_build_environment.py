@@ -20,7 +20,12 @@ class StubRepositoryWorkspaceManager:
         self.calls.append(kwargs)
         repo_dir = Path(kwargs["repo_dir"])
         repo_dir.mkdir(parents=True, exist_ok=True)
-        return PreparedRepositoryResult(flutter_version="3.24.0", precache_ran=False)
+        return PreparedRepositoryResult(
+            flutter_version="3.24.0",
+            precache_ran=False,
+            repo_dir=str(repo_dir),
+            workspace_lease=None,
+        )
 
 
 class BuildEnvironmentAssemblerTests(unittest.TestCase):

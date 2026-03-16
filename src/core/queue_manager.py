@@ -10,6 +10,7 @@ from typing import Dict, Callable
 from filelock import FileLock
 from pathlib import Path
 from .config import QUEUE_LOCKS_DIR, get_max_parallel_builds
+from .logging_utils import build_log_block, build_log_line
 import logging
 
 logger = logging.getLogger(__name__)
@@ -101,26 +102,34 @@ class BuildQueueManager:
         """
         lock_file = self.get_lock_file(queue_key)
         
-        logger.info(f"[{build_id}] 🔒 Acquiring queue lock: {queue_key}")
-        logger.info(f"[{build_id}] 📍 Lock file: {lock_file}")
+        logger.info(
+            build_log_block(
+                build_id,
+                "🔒 Acquiring queue lock",
+                (
+                    ("queue", queue_key),
+                    ("lock_file", lock_file),
+                ),
+            )
+        )
         
         with self.parallel_semaphore:
-            logger.info(f"[{build_id}] 🎛️ Parallel slot acquired")
+            logger.info(build_log_line(build_id, "🎛️ Parallel slot acquired"))
             # 파일 기반 락으로 프로세스 간 동기화
             with FileLock(str(lock_file), timeout=QUEUE_LOCK_TIMEOUT):
-                logger.info(f"[{build_id}] ✅ Queue lock acquired: {queue_key}")
+                logger.info(build_log_line(build_id, f"✅ Queue lock acquired: {queue_key}"))
                 
                 try:
                     result = task(*args, **kwargs)
-                    logger.info(f"[{build_id}] 🎉 Task completed successfully")
+                    logger.info(build_log_line(build_id, "🎉 Task completed successfully"))
                     return result
                     
                 except Exception as e:
-                    logger.error(f"[{build_id}] ❌ Task failed: {str(e)}")
+                    logger.error(build_log_line(build_id, f"❌ Task failed: {str(e)}"))
                     raise
                     
                 finally:
-                    logger.info(f"[{build_id}] 🔓 Queue lock released: {queue_key}")
+                    logger.info(build_log_line(build_id, f"🔓 Queue lock released: {queue_key}"))
 
 
 # 전역 인스턴스

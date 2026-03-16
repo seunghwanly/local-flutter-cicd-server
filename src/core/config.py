@@ -8,6 +8,8 @@ from pathlib import Path
 import logging
 import shutil
 
+from .logging_utils import build_log_block, build_log_line
+
 logger = logging.getLogger(__name__)
 
 # 상수 정의
@@ -22,13 +24,12 @@ QUEUE_LOCKS_DIR = (WORKSPACE_ROOT / "queue_locks").resolve()
 BUILDS_DIR.mkdir(parents=True, exist_ok=True)
 QUEUE_LOCKS_DIR.mkdir(parents=True, exist_ok=True)
 
-logger.info(f"📂 Workspace root: {WORKSPACE_ROOT}")
-logger.info(f"📂 Builds directory: {BUILDS_DIR}")
-logger.info(f"🔒 Queue locks directory: {QUEUE_LOCKS_DIR}")
+logger.info(build_log_line(None, f"📂 Workspace root: {WORKSPACE_ROOT}"))
+logger.info(build_log_line(None, f"📂 Builds directory: {BUILDS_DIR}"))
+logger.info(build_log_line(None, f"🔒 Queue locks directory: {QUEUE_LOCKS_DIR}"))
 
 def _is_https_git_url(repo_url: str) -> bool:
     return repo_url.startswith("https://") or repo_url.startswith("http://")
-
 
 def setup_git_credentials(build_workspace: Path, env: dict, repo_url: str = ""):
     """Git 자격증명 설정 (SSH 또는 HTTPS)"""
@@ -227,35 +228,33 @@ def warmup_git_dependencies(pub_cache_dir: Path, build_id: str = None) -> bool:
     system_git_cache = system_pub_cache / "git"
     target_git_cache = pub_cache_dir / "git"
     
-    log_prefix = f"[{build_id}] " if build_id else ""
-    
     if system_git_cache.exists() and not target_git_cache.exists():
         try:
             # 심볼릭 링크로 공유 (복사 대신)
             target_git_cache.symlink_to(system_git_cache)
-            logger.info(f"{log_prefix}🔗 Git cache linked to system: {system_git_cache}")
-            print(f"{log_prefix}🔗 Git cache linked to system")
+            logger.info(build_log_line(build_id, f"🔗 Git cache linked to system: {system_git_cache}"))
+            print(build_log_line(build_id, "🔗 Git cache linked to system"))
             
             # 캐시 항목 수 확인
             cache_items = list(system_git_cache.glob('cache/*'))
             if cache_items:
-                logger.info(f"{log_prefix}✅ Git cache warmed up: {len(cache_items)} repositories")
-                print(f"{log_prefix}✅ Git cache contains {len(cache_items)} repositories")
+                logger.info(build_log_line(build_id, f"✅ Git cache warmed up: {len(cache_items)} repositories"))
+                print(build_log_line(build_id, f"✅ Git cache contains {len(cache_items)} repositories"))
             else:
-                logger.warning(f"{log_prefix}⚠️ System git cache is empty. First build may initialize git dependencies.")
-                print(f"{log_prefix}⚠️ System git cache is empty")
+                logger.warning(build_log_line(build_id, "⚠️ System git cache is empty. First build may initialize git dependencies."))
+                print(build_log_line(build_id, "⚠️ System git cache is empty"))
             
             return True
         except Exception as e:
-            logger.error(f"{log_prefix}❌ Failed to link git cache: {str(e)}")
-            print(f"{log_prefix}❌ Failed to link git cache: {str(e)}")
+            logger.error(build_log_line(build_id, f"❌ Failed to link git cache: {str(e)}"))
+            print(build_log_line(build_id, f"❌ Failed to link git cache: {str(e)}"))
             return False
     elif target_git_cache.exists():
-        logger.info(f"{log_prefix}✅ Git cache already exists")
+        logger.info(build_log_line(build_id, "✅ Git cache already exists"))
         return True
     else:
-        logger.warning(f"{log_prefix}⚠️ System git cache not found: {system_git_cache}")
-        print(f"{log_prefix}⚠️ System git cache not found. First build will initialize git dependencies.")
+        logger.warning(build_log_line(build_id, f"⚠️ System git cache not found: {system_git_cache}"))
+        print(build_log_line(build_id, "⚠️ System git cache not found. First build will initialize git dependencies."))
         return False
 
 
@@ -268,8 +267,6 @@ def _create_symlink_or_directory(target_path: Path, source_path: Path = None, bu
         source_path: 심볼릭 링크 대상 경로 (None이면 일반 디렉토리)
         build_id: 빌드 ID (로깅용)
     """
-    log_prefix = f"[{build_id}] " if build_id else ""
-    
     # 기존 디렉토리/링크 제거
     if target_path.exists() or target_path.is_symlink():
         try:
@@ -278,18 +275,18 @@ def _create_symlink_or_directory(target_path: Path, source_path: Path = None, bu
             elif target_path.is_dir():
                 shutil.rmtree(target_path)
         except Exception as e:
-            logger.warning(f"{log_prefix}Failed to remove existing path {target_path}: {e}")
+            logger.warning(build_log_line(build_id, f"Failed to remove existing path {target_path}: {e}"))
     
     # 새로 생성
     try:
         if source_path:
             target_path.symlink_to(source_path)
-            logger.info(f"{log_prefix}🔗 Linked {target_path.name} to {source_path}")
+            logger.info(build_log_line(build_id, f"🔗 Linked {target_path.name} to {source_path}"))
         else:
             target_path.mkdir(parents=True, exist_ok=True)
-            logger.info(f"{log_prefix}📁 Created directory {target_path.name}")
+            logger.info(build_log_line(build_id, f"📁 Created directory {target_path.name}"))
     except Exception as e:
-        logger.error(f"{log_prefix}Failed to create {target_path}: {e}")
+        logger.error(build_log_line(build_id, f"Failed to create {target_path}: {e}"))
         raise
 
 def get_isolated_env(build_id: str, flutter_version: str = None, gradle_version: str = None, cocoapods_version: str = None) -> dict:
@@ -408,27 +405,40 @@ def get_isolated_env(build_id: str, flutter_version: str = None, gradle_version:
         git_link = pub_cache_dir / "git"
         if not git_link.exists() and not git_link.is_symlink():
             git_link.symlink_to(shared_caches['git_cache'])
-            logger.info(f"[{build_id}] 🔗 Git cache linked to shared: {shared_caches['git_cache']}")
+            logger.info(build_log_line(build_id, f"🔗 Git cache linked to shared: {shared_caches['git_cache']}"))
     else:
         # 레거시: 시스템 캐시 사용
         warmup_git_dependencies(pub_cache_dir, build_id)
     
     # 디버그 정보 출력
-    print(f"🔍 Environment debug:")
-    print(f"   HOME: {env.get('HOME')}")
-    print(f"   SSH_AUTH_SOCK: {env.get('SSH_AUTH_SOCK', 'NOT SET')}")
-    print(f"   GIT_SSH_COMMAND: {env.get('GIT_SSH_COMMAND', 'NOT SET')}")
-    print(f"   PUB_CACHE: {env.get('PUB_CACHE')}")
-    
-    logger.info(f"[{build_id}] 🔒 Isolated environment created:")
-    logger.info(f"[{build_id}]   - Repo: {repo_dir}")
-    logger.info(f"[{build_id}]   - PUB_CACHE: {pub_cache_dir}")
-    logger.info(f"[{build_id}]   - GRADLE_HOME: {gradle_home_dir}")
-    logger.info(f"[{build_id}]   - GEM_HOME: {gem_home_dir}")
-    logger.info(f"[{build_id}]   - CP_HOME_DIR: {cocoapods_cache_dir}")
-    logger.info(f"[{build_id}]   - DERIVED_DATA_PATH: {deriveddata_cache_dir}")
-    logger.info(f"[{build_id}]   - HOME: {env.get('HOME')}")
-    logger.info(f"[{build_id}]   - SSH_AUTH_SOCK: {env.get('SSH_AUTH_SOCK', 'NOT SET')}")
+    env_debug_message = build_log_block(
+        build_id,
+        "🔍 Environment debug",
+        (
+            ("HOME", env.get("HOME")),
+            ("SSH_AUTH_SOCK", env.get("SSH_AUTH_SOCK", "NOT SET")),
+            ("GIT_SSH_COMMAND", env.get("GIT_SSH_COMMAND", "NOT SET")),
+            ("PUB_CACHE", env.get("PUB_CACHE")),
+        ),
+    )
+    print(env_debug_message)
+
+    logger.info(
+        build_log_block(
+            build_id,
+            "🔒 Isolated environment created",
+            (
+                ("Repo", repo_dir),
+                ("PUB_CACHE", pub_cache_dir),
+                ("GRADLE_HOME", gradle_home_dir),
+                ("GEM_HOME", gem_home_dir),
+                ("CP_HOME_DIR", cocoapods_cache_dir),
+                ("DERIVED_DATA_PATH", deriveddata_cache_dir),
+                ("HOME", env.get("HOME")),
+                ("SSH_AUTH_SOCK", env.get("SSH_AUTH_SOCK", "NOT SET")),
+            ),
+        )
+    )
     
     return {
         "env": env,
