@@ -4,6 +4,7 @@ import tempfile
 import unittest
 from collections import defaultdict
 from pathlib import Path
+from unittest.mock import patch
 
 from src.infrastructure.command_runner import CompletedCommand
 from src.infrastructure.setup_executor import SetupExecutor
@@ -206,6 +207,58 @@ class SetupExecutorTests(unittest.TestCase):
                     env={"GEM_HOME": "/tmp/gems"},
                     log=lambda _: None,
                 )
+
+    def test_repair_incompatible_shorebird_patch_artifact_on_arm64(self) -> None:
+        runner = FakeCommandRunner()
+        executor = SetupExecutor(runner)
+        logs: list[str] = []
+
+        with tempfile.TemporaryDirectory() as tmp:
+            home_dir = Path(tmp)
+            patch_dir = home_dir / ".shorebird" / "bin" / "cache" / "artifacts" / "patch"
+            patch_dir.mkdir(parents=True)
+            patch_binary = patch_dir / "patch"
+            patch_binary.write_text("binary", encoding="utf-8")
+            runner.add_response(
+                ["file", str(patch_binary)],
+                stdout=f"{patch_binary}: Mach-O 64-bit executable x86_64\n",
+            )
+
+            with patch("src.infrastructure.setup_executor.platform.machine", return_value="arm64"):
+                executor._repair_incompatible_shorebird_patch_artifact(
+                    cwd=home_dir,
+                    env={"HOME": str(home_dir), "TRIGGER_SOURCE": "shorebird_manual"},
+                    build_id="build-shorebird",
+                    log=logs.append,
+                )
+
+            self.assertFalse(patch_dir.exists())
+
+        self.assertIn(("file", str(patch_binary)), runner.calls)
+        self.assertTrue(any("Removing incompatible Shorebird patch artifact cache" in line for line in logs))
+
+    def test_repair_shorebird_patch_artifact_skips_for_non_shorebird_build(self) -> None:
+        runner = FakeCommandRunner()
+        executor = SetupExecutor(runner)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            home_dir = Path(tmp)
+            patch_dir = home_dir / ".shorebird" / "bin" / "cache" / "artifacts" / "patch"
+            patch_dir.mkdir(parents=True)
+            patch_binary = patch_dir / "patch"
+            patch_binary.write_text("binary", encoding="utf-8")
+
+            with patch("src.infrastructure.setup_executor.platform.machine", return_value="arm64"):
+                executor._repair_incompatible_shorebird_patch_artifact(
+                    cwd=home_dir,
+                    env={"HOME": str(home_dir), "TRIGGER_SOURCE": "manual"},
+                    build_id="build-manual",
+                    log=lambda _: None,
+                )
+
+            self.assertTrue(patch_binary.exists())
+
+        self.assertEqual([], runner.calls)
 
 
 if __name__ == "__main__":

@@ -70,6 +70,7 @@ class BuildEnvironmentAssemblerTests(unittest.TestCase):
                 )
 
         self.assertEqual("patch_prod", runtime.env["FASTLANE_LANE"])
+        self.assertEqual("shorebird_manual", runtime.env["TRIGGER_SOURCE"])
         self.assertTrue(any("Shorebird patch config" in line for line in logs))
         self.assertEqual("release/2.2.1-hotfix", repo_manager.calls[0]["branch_name"])
 
@@ -154,6 +155,7 @@ class BuildEnvironmentAssemblerTests(unittest.TestCase):
             )
 
         self.assertEqual("deploy_stage", runtime.env["FASTLANE_LANE"])
+        self.assertEqual("manual", runtime.env["TRIGGER_SOURCE"])
         self.assertNotIn("SHOREBIRD_RELEASE_VERSION", runtime.env)
 
 

@@ -42,6 +42,7 @@ class BuildEnvironmentAssembler:
                 "LOCAL_DIR": isolated["repo_dir"],
                 "BRANCH_NAME": job.branch_name,
                 "FLAVOR": job.flavor,
+                "TRIGGER_SOURCE": job.trigger_source,
                 "FASTLANE_LANE": fastlane_lane,
                 "DATADOG_API_KEY": os.environ.get("DATADOG_API_KEY", ""),
                 "GYM_DERIVED_DATA_PATH": isolated["deriveddata_cache_dir"],
