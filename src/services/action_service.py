@@ -107,7 +107,7 @@ class ShorebirdActionService:
 
         build_id = build_service.start_build_pipeline(
             flavor=flavor,
-            platform=os.environ.get("SHOREBIRD_PATCH_PLATFORM", "all"),
+            platform=os.environ.get("SHOREBIRD_PATCH_PLATFORM", "ios"),
             trigger_source="shorebird",
             trigger_event_id=delivery_id or event_type,
             build_name=build_name or self._payload_value(payload, "ref"),

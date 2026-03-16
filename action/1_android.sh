@@ -31,6 +31,10 @@ USE_BUNDLER=false
 if [ -f "Gemfile" ]; then
     USE_BUNDLER=true
 fi
+if [[ "${FASTLANE_LANE:-beta}" == patch_* ]]; then
+    echo "❌ Shorebird patch is only supported for iOS in this pipeline"
+    exit 1
+fi
 
 echo "  ✅ 독립 환경 설정 완료"
 echo ""

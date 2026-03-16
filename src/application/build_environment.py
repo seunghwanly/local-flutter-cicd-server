@@ -36,12 +36,13 @@ class BuildEnvironmentAssembler:
         )
         env = isolated["env"]
         repo_url = os.environ.get("REPO_URL", "")
+        fastlane_lane = self._resolve_fastlane_lane(job)
         env.update(
             {
                 "LOCAL_DIR": isolated["repo_dir"],
                 "BRANCH_NAME": job.branch_name,
                 "FLAVOR": job.flavor,
-                "FASTLANE_LANE": os.environ.get(f"{job.flavor.upper()}_FASTLANE_LANE", "beta"),
+                "FASTLANE_LANE": fastlane_lane,
                 "DATADOG_API_KEY": os.environ.get("DATADOG_API_KEY", ""),
                 "GYM_DERIVED_DATA_PATH": isolated["deriveddata_cache_dir"],
                 "GYM_XCARCHIVE_PATH": os.path.join(isolated["deriveddata_cache_dir"], "Archives"),
@@ -90,15 +91,32 @@ class BuildEnvironmentAssembler:
 
         log(f"[{job.build_id}] 📂 Workspace: {get_build_workspace(job.build_id)}")
         log(f"[{job.build_id}] 🌿 Branch: {job.branch_name}")
+        log(f"[{job.build_id}] 🛣️ Fastlane lane: {fastlane_lane}")
         if versions.gradle_version:
             log(f"[{job.build_id}] 🔧 Gradle version: {versions.gradle_version}")
         if versions.cocoapods_version:
             log(f"[{job.build_id}] 🔧 CocoaPods version: {versions.cocoapods_version}")
         if versions.fastlane_version:
             log(f"[{job.build_id}] 🔧 Fastlane version: {versions.fastlane_version}")
+        if job.trigger_source in {"shorebird", "shorebird_manual"}:
+            log(
+                f"[{job.build_id}] 🐦 Shorebird patch config: "
+                f"flavor={job.flavor}, branch={job.branch_name}, "
+                f"release_version={job.build_name}, platform={job.platform}"
+            )
+            if job.build_number:
+                log(
+                    f"[{job.build_id}] ℹ️ Shorebird patch number received: {job.build_number} "
+                    f"(currently retained for logs/status only)"
+                )
 
         return BuildRuntimeContext(
             env=env,
             repo_dir=isolated["repo_dir"],
             workspace=str(get_build_workspace(job.build_id)),
         )
+
+    def _resolve_fastlane_lane(self, job: BuildJob) -> str:
+        if job.trigger_source in {"shorebird", "shorebird_manual"}:
+            return os.environ.get("SHOREBIRD_FASTLANE_LANE", f"patch_{job.flavor}")
+        return os.environ.get(f"{job.flavor.upper()}_FASTLANE_LANE", "beta")
