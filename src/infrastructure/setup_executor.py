@@ -504,14 +504,14 @@ class SetupExecutor:
         if requested_ruby in installed_versions:
             return requested_ruby
 
-        if requested_source == "Gemfile.lock":
+        if requested_source in {"Gemfile.lock", "RUBY_VERSION"}:
             compatible_versions = sorted(
                 (version for version in installed_versions if self._compare_versions(version, requested_ruby) >= 0),
                 key=self._version_sort_key,
             )
             if compatible_versions:
                 selected = compatible_versions[0]
-                log(f"[{build_id}] 💎 Using compatible installed Ruby {selected} for Gemfile.lock requirement {requested_ruby}+")
+                log(f"[{build_id}] 💎 Using compatible installed Ruby {selected} for {requested_source} requirement {requested_ruby}+")
                 return selected
 
         raise RuntimeError(
@@ -541,7 +541,7 @@ class SetupExecutor:
         env: Dict[str, str],
         exc: CommandExecutionError,
     ) -> None:
-        ruby_requirement = re.search(r"requires ruby version >=\s*([0-9.]+)", exc.output)
+        ruby_requirement = re.search(r"requires Ruby version >=\s*([0-9.]+)", exc.output, re.IGNORECASE)
         if ruby_requirement:
             required = ruby_requirement.group(1)
             current = self._current_ruby_version(cwd, env) or "unknown"

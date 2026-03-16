@@ -100,8 +100,8 @@ class SetupExecutorTests(unittest.TestCase):
         executor = SetupExecutor(runner)
         logs: list[str] = []
 
-        runner.add_response(["rbenv", "versions", "--bare"], stdout="3.1.0\n3.3.9\n")
-        runner.add_response(["ruby", "-e", "print RUBY_VERSION"], stdout="3.3.9")
+        runner.add_response(["rbenv", "versions", "--bare"], stdout="3.1.0\n3.2.0\n3.3.9\n")
+        runner.add_response(["ruby", "-e", "print RUBY_VERSION"], stdout="3.2.0")
         runner.add_response(["gem", "list", "-i", "cocoapods", "-v", "1.16.2"], returncode=0)
         runner.add_response(["gem", "list", "-i", "bundler", "-v", "2.7.2"], returncode=0)
         runner.add_response(["bundle", "_2.7.2_", "config", "set", "--local", "path", "/tmp/gems/bundle"])
@@ -117,7 +117,7 @@ class SetupExecutorTests(unittest.TestCase):
                 "  specs:\n"
                 "\n"
                 "RUBY VERSION\n"
-                "   ruby 3.3.9p0\n"
+                "   ruby 3.2.0p0\n"
                 "\n"
                 "BUNDLED WITH\n"
                 "   2.7.2\n",
@@ -138,11 +138,47 @@ class SetupExecutorTests(unittest.TestCase):
         self.assertIn(("bundle", "_2.7.2_", "install"), runner.calls)
         self.assertTrue(any("Installing Ruby bundle" in line for line in logs))
 
+    def test_prepare_android_toolchain_uses_ruby_version_fallback(self) -> None:
+        runner = FakeCommandRunner()
+        executor = SetupExecutor(runner)
+        logs: list[str] = []
+
+        runner.add_response(["rbenv", "versions", "--bare"], stdout="3.1.0\n3.3.9\n")
+        runner.add_response(["ruby", "-e", "print RUBY_VERSION"], stdout="3.3.9")
+        runner.add_response(["gem", "list", "-i", "bundler", "-v", "2.7.2"], returncode=0)
+        runner.add_response(["bundle", "_2.7.2_", "config", "set", "--local", "path", "/tmp/gems/bundle"])
+        runner.add_response(["bundle", "_2.7.2_", "install"], stdout="bundle ok")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_dir = Path(tmp) / "repo"
+            android_dir = repo_dir / "android"
+            android_dir.mkdir(parents=True)
+            (android_dir / "Gemfile").write_text("source 'https://rubygems.org'\n", encoding="utf-8")
+            (android_dir / "Gemfile.lock").write_text(
+                "GEM\n"
+                "  specs:\n"
+                "\n"
+                "BUNDLED WITH\n"
+                "   2.7.2\n",
+                encoding="utf-8",
+            )
+
+            executor.prepare_platform_toolchain(
+                build_id="build-android",
+                platform="android",
+                repo_dir=str(repo_dir),
+                env={"GEM_HOME": "/tmp/gems", "RUBY_VERSION": "3.2.0"},
+                log=logs.append,
+            )
+
+        self.assertIn(("bundle", "_2.7.2_", "install"), runner.calls)
+        self.assertTrue(any("Using compatible installed Ruby 3.3.9 for RUBY_VERSION requirement 3.2.0+" in line for line in logs))
+
     def test_prepare_android_toolchain_fails_when_lockfile_requires_newer_ruby(self) -> None:
         runner = FakeCommandRunner()
         executor = SetupExecutor(runner)
 
-        runner.add_response(["rbenv", "versions", "--bare"], stdout="3.1.0\n3.3.9\n")
+        runner.add_response(["rbenv", "versions", "--bare"], stdout="3.1.0\n3.2.0\n")
         runner.add_response(["ruby", "-e", "print RUBY_VERSION"], stdout="3.1.0")
 
         with tempfile.TemporaryDirectory() as tmp:

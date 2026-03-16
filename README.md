@@ -58,6 +58,7 @@ cp env.template .env
 | 항목 | 키 | 설명 |
 |------|----|------|
 | Flutter 버전 | `FLUTTER_VERSION` | `.fvmrc`/`.tool-versions`가 없을 때만 쓰는 fallback Flutter SDK 버전 |
+| Ruby 버전 | `RUBY_VERSION` | `.ruby-version`/`.tool-versions`/`Gemfile.lock` 기준이 없을 때 쓰는 fallback Ruby 버전. 기본값은 `3.2.0` |
 | Git 리포 | `REPO_URL` | Git 리포지토리 주소 |
 | 브랜치 이름 | `DEV_BRANCH_NAME` / `PROD_BRANCH_NAME` | 배포 대상 브랜치 |
 | Fastlane Lane | `DEV_FASTLANE_LANE` / `PROD_FASTLANE_LANE` | Fastlane에서 실행할 lane 이름 |
