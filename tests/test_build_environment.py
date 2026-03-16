@@ -73,7 +73,7 @@ class BuildEnvironmentAssemblerTests(unittest.TestCase):
         self.assertTrue(any("Shorebird patch config" in line for line in logs))
         self.assertEqual("release/2.2.1-hotfix", repo_manager.calls[0]["branch_name"])
 
-    def test_shorebird_build_allows_lane_override(self) -> None:
+    def test_shorebird_build_uses_flavor_specific_lane_override(self) -> None:
         repo_manager = StubRepositoryWorkspaceManager()
         assembler = BuildEnvironmentAssembler(repo_manager)
         request = BuildRequestData(
@@ -89,7 +89,7 @@ class BuildEnvironmentAssemblerTests(unittest.TestCase):
             os.environ,
             {
                 "REPO_URL": "git@github.com:org/app.git",
-                "SHOREBIRD_FASTLANE_LANE": "custom_patch_stage",
+                "SHOREBIRD_STAGE_FASTLANE_LANE": "custom_patch_stage",
             },
             clear=False,
         ), patch(

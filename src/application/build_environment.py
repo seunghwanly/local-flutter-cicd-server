@@ -118,5 +118,5 @@ class BuildEnvironmentAssembler:
 
     def _resolve_fastlane_lane(self, job: BuildJob) -> str:
         if job.trigger_source in {"shorebird", "shorebird_manual"}:
-            return os.environ.get("SHOREBIRD_FASTLANE_LANE", f"patch_{job.flavor}")
+            return os.environ.get(f"SHOREBIRD_{job.flavor.upper()}_FASTLANE_LANE", f"patch_{job.flavor}")
         return os.environ.get(f"{job.flavor.upper()}_FASTLANE_LANE", "beta")

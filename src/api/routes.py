@@ -201,7 +201,7 @@ def create_app() -> FastAPI:
     @app.post("/build/shorebird", response_model=ManualBuildResponse, tags=["Manual Build"])
     async def manual_shorebird_build(
         flavor: str = Form("", description="flavor 설정. 비우면 SHOREBIRD_PATCH_FLAVOR 또는 prod 사용. dev, stg, stage, prd, prod 지원"),
-        platform: str = Form("", description="platform 설정. 비우면 SHOREBIRD_PATCH_PLATFORM 또는 ios 사용. 현재 shorebird patch는 ios만 지원"),
+        platform: str = Form("", description="platform 설정. 비우면 SHOREBIRD_PATCH_PLATFORM 또는 ios 사용. ios, android, all 지원"),
         build_name: Optional[str] = Form("", description="shorebird patch 대상 release version. 예: 2.2.1+689"),
         build_number: Optional[str] = Form("", description="shorebird patch number 또는 내부 기록용 값. 현재 fastlane patch 인자에는 직접 사용하지 않음"),
         branch_name: Optional[str] = Form("", description="branch name 설정. 비우면 SHOREBIRD_PATCH_BRANCH_NAME 또는 main 사용"),
