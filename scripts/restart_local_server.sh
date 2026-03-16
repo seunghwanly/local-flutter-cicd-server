@@ -4,8 +4,13 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PORT="${PORT:-8000}"
+RUNTIME_DIR="$ROOT_DIR/.workspace/runtime"
+PID_FILE="$RUNTIME_DIR/server.pid"
+LOG_FILE="$RUNTIME_DIR/server.log"
 
 cd "$ROOT_DIR"
+
+mkdir -p "$RUNTIME_DIR"
 
 ensure_clean_worktree() {
     if [ -n "$(git status --porcelain)" ]; then
@@ -55,6 +60,7 @@ stop_existing_server() {
     done
 
     echo "✅ 기존 서버를 중지했습니다."
+    rm -f "$PID_FILE"
 }
 
 sync_main_branch() {
@@ -65,8 +71,20 @@ sync_main_branch() {
 }
 
 start_server() {
-    echo "🚀 ./local_run.sh 로 서버를 다시 시작합니다..."
-    exec ./local_run.sh
+    echo "🚀 원격 터미널과 분리된 백그라운드 프로세스로 서버를 시작합니다..."
+    nohup ./local_run.sh >"$LOG_FILE" 2>&1 </dev/null &
+    local server_pid=$!
+    echo "$server_pid" > "$PID_FILE"
+    sleep 2
+
+    if ! kill -0 "$server_pid" 2>/dev/null; then
+        echo "❌ 서버 시작에 실패했습니다. 로그를 확인하세요: $LOG_FILE"
+        exit 1
+    fi
+
+    echo "✅ 서버를 시작했습니다."
+    echo "   PID: $server_pid"
+    echo "   LOG: $LOG_FILE"
 }
 
 ensure_clean_worktree
