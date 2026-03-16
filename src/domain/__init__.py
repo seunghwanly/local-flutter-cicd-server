@@ -1,9 +1,10 @@
 """Domain layer for build orchestration."""
 
-from .builds import BuildJob, BuildProgress, BuildRequestData, BuildStatus, StageStatus
+from .builds import BuildJob, BuildLogEntry, BuildProgress, BuildRequestData, BuildStatus, StageStatus
 
 __all__ = [
     "BuildJob",
+    "BuildLogEntry",
     "BuildProgress",
     "BuildRequestData",
     "BuildStatus",

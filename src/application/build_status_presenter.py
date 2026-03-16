@@ -13,6 +13,7 @@ class BuildStatusPresenter:
 
     def detail(self, job: BuildJob, log_file_path: Optional[str]) -> Dict:
         status = self._effective_status(job).value
+        stage_logs = self._stage_logs(job)
         return {
             "build_id": job.build_id,
             "status": status,
@@ -58,6 +59,7 @@ class BuildStatusPresenter:
                     "message": stage.message,
                     "started_at": stage.started_at,
                     "completed_at": stage.completed_at,
+                    "logs": stage_logs.get(stage.name, []),
                 }
                 for stage in job.stages.values()
             ],
@@ -98,6 +100,14 @@ class BuildStatusPresenter:
                 for stage in job.stages.values()
             ],
         }
+
+    def _stage_logs(self, job: BuildJob) -> Dict[str, list[str]]:
+        stage_logs = {name: [] for name in job.stages.keys()}
+        for entry in job.log_entries:
+            for stage_name in entry.stages:
+                if stage_name in stage_logs:
+                    stage_logs[stage_name].append(entry.message)
+        return stage_logs
 
     def _effective_status(self, job: BuildJob) -> BuildStatus:
         if job.status == BuildStatus.CANCELED:
