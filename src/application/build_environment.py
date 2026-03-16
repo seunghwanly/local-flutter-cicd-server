@@ -3,22 +3,13 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
-from typing import Dict
 
+from ..core import BuildRuntimeContext
 from ..core.config import get_build_workspace, get_isolated_env
+from ..core.logging_utils import build_log_block
 from ..domain import BuildJob
 from ..infrastructure import RepositoryWorkspaceManager
 from .version_resolver import ResolvedVersions
-
-
-@dataclass
-class BuildRuntimeContext:
-    """Resolved environment and workspace paths for a build job."""
-
-    env: Dict[str, str]
-    repo_dir: str
-    workspace: str
 
 
 class BuildEnvironmentAssembler:
@@ -60,6 +51,7 @@ class BuildEnvironmentAssembler:
             log=log,
             should_cancel=should_cancel,
         )
+        env["LOCAL_DIR"] = prepared.repo_dir
         job.mark_stage_completed("repository_synced", f"Repository synchronized for {job.branch_name}")
         resolved_flutter_version = prepared.flutter_version
         if resolved_flutter_version:
@@ -88,17 +80,30 @@ class BuildEnvironmentAssembler:
         if match_password:
             env["MATCH_PASSWORD"] = match_password
 
-        log(f"[{job.build_id}] 📂 Workspace: {get_build_workspace(job.build_id)}")
-        log(f"[{job.build_id}] 🌿 Branch: {job.branch_name}")
+        summary_rows: list[tuple[str, object]] = [
+            ("Workspace", get_build_workspace(job.build_id)),
+            ("Repo slot", prepared.repo_dir),
+            ("Branch", job.branch_name),
+        ]
+        if prepared.workspace_lease is not None:
+            summary_rows.append(("Slot key", prepared.workspace_lease.slot_key))
+            summary_rows.append(("Slot id", prepared.workspace_lease.slot_id))
         if versions.gradle_version:
-            log(f"[{job.build_id}] 🔧 Gradle version: {versions.gradle_version}")
+            summary_rows.append(("Gradle version", versions.gradle_version))
         if versions.cocoapods_version:
-            log(f"[{job.build_id}] 🔧 CocoaPods version: {versions.cocoapods_version}")
+            summary_rows.append(("CocoaPods version", versions.cocoapods_version))
         if versions.fastlane_version:
-            log(f"[{job.build_id}] 🔧 Fastlane version: {versions.fastlane_version}")
+            summary_rows.append(("Fastlane version", versions.fastlane_version))
+        log(build_log_block(job.build_id, "📂 Build environment ready", summary_rows))
 
         return BuildRuntimeContext(
             env=env,
-            repo_dir=isolated["repo_dir"],
+            repo_dir=prepared.repo_dir,
             workspace=str(get_build_workspace(job.build_id)),
+            trigger_source=job.trigger_source,
+            build_name=job.build_name,
+            build_number=job.build_number,
+            slot_key=prepared.workspace_lease.slot_key if prepared.workspace_lease else None,
+            slot_id=prepared.workspace_lease.slot_id if prepared.workspace_lease else None,
+            workspace_lease=prepared.workspace_lease,
         )
