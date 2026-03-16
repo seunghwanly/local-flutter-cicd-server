@@ -490,6 +490,12 @@
             color: var(--text-primary);
         }
 
+        .modal-actions {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
         .modal-body {
             padding: 24px;
             overflow-y: auto;
@@ -649,7 +655,10 @@
                     <span id="modal-build-id">빌드 로그</span>
                     <span id="modal-status-badge" class="status-badge"></span>
                 </h3>
-                <button class="close-btn" onclick="closeModal()">&times;</button>
+                <div class="modal-actions">
+                    <div id="modal-cancel-action"></div>
+                    <button class="close-btn" onclick="closeModal()">&times;</button>
+                </div>
             </div>
             <div class="modal-body">
                 <div class="info-row" style="margin-bottom: 20px;">
@@ -689,7 +698,7 @@
         const getStatusLabel = (status) => {
             if (!status) return '알 수 없음';
             const s = status.toLowerCase();
-            if (s === 'running') return '실행 중';
+            if (s === 'running' || s === 'in_progress') return '실행 중';
             if (s === 'completed' || s === 'success') return '성공';
             if (s === 'failed' || s === 'error') return '실패';
             if (s === 'canceled') return '취소됨';
@@ -781,7 +790,7 @@
 
         const isCancelableStatus = (status) => {
             const normalized = (status || '').toLowerCase();
-            return normalized === 'running' || normalized === 'pending';
+            return normalized === 'running' || normalized === 'in_progress' || normalized === 'pending';
         };
 
         const getCancelButtonHtml = (buildId, status) => {
@@ -794,6 +803,12 @@
                     </button>
                 </div>
             `;
+        };
+
+        const renderModalCancelAction = (buildId, status) => {
+            const container = document.getElementById('modal-cancel-action');
+            if (!container) return;
+            container.innerHTML = getCancelButtonHtml(buildId, status);
         };
 
         const fetchDiagnostics = async () => {
@@ -943,6 +958,7 @@
             const data = await fetchBuildDetail(currentModalBuildId);
             if (!data) return;
 
+            renderModalCancelAction(currentModalBuildId, data.status);
             document.getElementById('modal-status-badge').className = `status-badge ${getStatusClass(data.status)}`;
             document.getElementById('modal-status-badge').innerText = getStatusLabel(data.status);
 
@@ -986,6 +1002,7 @@
             const overlay = document.getElementById('log-modal');
             const buildSummary = currentBuilds[buildId] || {};
             
+            renderModalCancelAction(buildId, buildSummary.status);
             document.getElementById('modal-build-id').innerText = `빌드 #${buildId.substring(0, 8)}`;
             document.getElementById('modal-status-badge').className = `status-badge ${getStatusClass(buildSummary.status)}`;
             document.getElementById('modal-status-badge').innerText = getStatusLabel(buildSummary.status);
@@ -1002,6 +1019,7 @@
 
         window.closeModal = () => {
             document.getElementById('log-modal').classList.remove('active');
+            document.getElementById('modal-cancel-action').innerHTML = '';
             if (modalPollingInterval) {
                 clearInterval(modalPollingInterval);
                 modalPollingInterval = null;
