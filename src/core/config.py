@@ -26,31 +26,59 @@ logger.info(f"📂 Workspace root: {WORKSPACE_ROOT}")
 logger.info(f"📂 Builds directory: {BUILDS_DIR}")
 logger.info(f"🔒 Queue locks directory: {QUEUE_LOCKS_DIR}")
 
+def _is_https_git_url(repo_url: str) -> bool:
+    return repo_url.startswith("https://") or repo_url.startswith("http://")
 
-def setup_git_credentials(build_workspace: Path, env: dict):
+
+def setup_git_credentials(build_workspace: Path, env: dict, repo_url: str = ""):
     """Git 자격증명 설정 (SSH 또는 HTTPS)"""
     home_dir = Path.home()
+    use_https = _is_https_git_url(repo_url.strip())
     
     # 1. HOME 환경변수 확인 (필수)
     if "HOME" not in env:
         env["HOME"] = str(home_dir)
     
-    # GITHUB_TOKEN이 있으면 HTTPS 모드
+    # 비대화형 빌드에서 키체인/프롬프트 조회를 막는다.
+    env["GIT_TERMINAL_PROMPT"] = "0"
+    env["GCM_INTERACTIVE"] = "never"
+
+    # HTTPS URL 또는 GITHUB_TOKEN이 있으면 HTTPS 모드
     github_token = os.environ.get("GITHUB_TOKEN")
-    if github_token:
-        # .git-credentials 파일 생성
+    if use_https or github_token:
         git_credentials = build_workspace / ".git-credentials"
-        git_credentials.write_text(f"https://{github_token}@github.com\n")
-        git_credentials.chmod(0o600)
-        
-        # Git credential helper 설정
+
+        if github_token:
+            git_credentials.write_text(
+                f"https://x-access-token:{github_token}@github.com\n",
+                encoding="utf-8",
+            )
+            git_credentials.chmod(0o600)
+            logger.info("✅ HTTPS credentials configured using GITHUB_TOKEN")
+        else:
+            system_git_credentials = home_dir / ".git-credentials"
+            if system_git_credentials.exists():
+                shutil.copy2(system_git_credentials, git_credentials)
+                git_credentials.chmod(0o600)
+                logger.info("✅ HTTPS credentials configured using ~/.git-credentials")
+            else:
+                logger.warning(
+                    "⚠️ HTTPS repository configured without GITHUB_TOKEN or ~/.git-credentials; "
+                    "private repository clone may fail."
+                )
+
+        # 빌드 전용 Git config로 macOS keychain helper를 우회한다.
         gitconfig = build_workspace / ".gitconfig"
-        gitconfig.write_text(f"""[credential]
-    helper = store --file={git_credentials}
-""")
+        helper_line = f"    helper = store --file={git_credentials}" if git_credentials.exists() else "    helper = "
+        gitconfig.write_text(
+            "[credential]\n"
+            "    helper = \n"
+            f"{helper_line}\n",
+            encoding="utf-8",
+        )
         env["GIT_CONFIG_GLOBAL"] = str(gitconfig)
-        print(f"✅ HTTPS credentials configured using GITHUB_TOKEN")
-        logger.info(f"✅ HTTPS credentials configured using GITHUB_TOKEN")
+        print("✅ HTTPS git authentication configured")
+        logger.info("✅ HTTPS git authentication configured")
     else:
         # SSH 모드: 기존 SSH 설정 로직
         # 2. SSH_AUTH_SOCK 확인 및 전달
@@ -371,7 +399,7 @@ def get_isolated_env(build_id: str, flutter_version: str = None, gradle_version:
     env["HOME"] = str(Path.home().resolve())  # 명시적 HOME 설정 (절대 경로)
     
     # Git 자격증명 설정
-    setup_git_credentials(workspace, env)
+    setup_git_credentials(workspace, env, os.environ.get("REPO_URL", ""))
     
     # Git 의존성 캐시 워밍업 (공유 캐시 또는 시스템 캐시 사용)
     if use_shared_cache and 'git_cache' in shared_caches:
