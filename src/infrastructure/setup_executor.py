@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import platform
 import re
 import shutil
 from pathlib import Path
@@ -265,10 +266,12 @@ class SetupExecutor:
         if (android_dir / "Gemfile").exists():
             bundler_version = self._ensure_bundler(android_dir, env, build_id, log, should_cancel=should_cancel)
             self._bundle_install(android_dir, env, build_id, log, bundler_version=bundler_version, should_cancel=should_cancel)
+            self._repair_incompatible_shorebird_patch_artifact(android_dir, env, build_id, log, should_cancel=should_cancel)
             return
 
         self._ensure_digest_crc(android_dir, env, build_id, log, should_cancel=should_cancel)
         self._ensure_gem("fastlane", env.get("FASTLANE_VERSION"), android_dir, env, build_id, log, should_cancel=should_cancel)
+        self._repair_incompatible_shorebird_patch_artifact(android_dir, env, build_id, log, should_cancel=should_cancel)
 
     def _configure_ruby_environment(self, cwd: Path, env: Dict[str, str], build_id: str, log, should_cancel=None) -> None:
         self._prepend_rbenv_to_path(env)
@@ -621,3 +624,45 @@ class SetupExecutor:
                 last_error = exc
         if last_error is not None:
             raise last_error
+
+    def _repair_incompatible_shorebird_patch_artifact(
+        self,
+        cwd: Path,
+        env: Dict[str, str],
+        build_id: str,
+        log,
+        should_cancel=None,
+    ) -> None:
+        if env.get("TRIGGER_SOURCE") not in {"shorebird", "shorebird_manual"}:
+            return
+
+        host_arch = platform.machine().lower()
+        if host_arch not in {"arm64", "aarch64"}:
+            return
+
+        shorebird_home = Path(env.get("HOME", str(Path.home()))).expanduser() / ".shorebird"
+        patch_dir = shorebird_home / "bin" / "cache" / "artifacts" / "patch"
+        patch_binary = patch_dir / "patch"
+        if not patch_binary.exists():
+            return
+
+        result = self.command_runner.run(
+            ["file", str(patch_binary)],
+            env=env,
+            cwd=str(cwd),
+            check=False,
+            should_stop=should_cancel,
+        )
+        if result.returncode != 0:
+            log(f"[{build_id}] ⚠️ Unable to inspect Shorebird patch artifact architecture")
+            return
+
+        description = result.stdout.lower()
+        if "x86_64" not in description or "arm64" in description:
+            return
+
+        log(
+            f"[{build_id}] 🧹 Removing incompatible Shorebird patch artifact cache "
+            f"for host architecture {host_arch}: {patch_binary}"
+        )
+        shutil.rmtree(patch_dir, ignore_errors=True)
