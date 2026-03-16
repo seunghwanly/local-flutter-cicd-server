@@ -13,7 +13,7 @@ class BuildRequestValidator:
     ALLOWED_FLAVORS = {"dev", "stage", "prod"}
     ALLOWED_PLATFORMS = {"all", "android", "ios"}
 
-    _SAFE_TEXT_PATTERN = re.compile(r"^[A-Za-z0-9._/-]+$")
+    _SAFE_TEXT_PATTERN = re.compile(r"^[A-Za-z0-9._/+:-]+$")
     _SAFE_VERSION_PATTERN = re.compile(r"^[A-Za-z0-9._-]+$")
     _SAFE_BRANCH_PATTERN = re.compile(r"^[A-Za-z0-9._/-]+$")
 
@@ -45,6 +45,10 @@ class BuildRequestValidator:
         request.fastlane_version = self._validate_optional(
             "fastlane_version", request.fastlane_version, self._SAFE_VERSION_PATTERN
         )
+
+        if request.trigger_source in {"shorebird", "shorebird_manual"}:
+            if not request.build_name:
+                raise ValueError("Shorebird patch requires build_name as release version")
 
         return request
 

@@ -28,10 +28,8 @@ logger.info(build_log_line(None, f"📂 Workspace root: {WORKSPACE_ROOT}"))
 logger.info(build_log_line(None, f"📂 Builds directory: {BUILDS_DIR}"))
 logger.info(build_log_line(None, f"🔒 Queue locks directory: {QUEUE_LOCKS_DIR}"))
 
-
 def _is_https_git_url(repo_url: str) -> bool:
     return repo_url.startswith("https://") or repo_url.startswith("http://")
-
 
 def setup_git_credentials(build_workspace: Path, env: dict, repo_url: str = ""):
     """Git 자격증명 설정 (SSH 또는 HTTPS)"""
@@ -396,6 +394,7 @@ def get_isolated_env(build_id: str, flutter_version: str = None, gradle_version:
     env["DERIVED_DATA_PATH"] = str(deriveddata_cache_dir)
     env["PATH"] = f"{gem_home_dir / 'bin'}:{pub_cache_dir / 'bin'}:{env.get('PATH', '/usr/local/bin:/usr/bin:/bin')}"
     env["HOME"] = str(Path.home().resolve())  # 명시적 HOME 설정 (절대 경로)
+    env["RUBY_VERSION"] = env.get("RUBY_VERSION", "3.2.0")
     
     # Git 자격증명 설정
     setup_git_credentials(workspace, env, os.environ.get("REPO_URL", ""))

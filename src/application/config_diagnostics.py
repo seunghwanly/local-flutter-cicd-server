@@ -36,7 +36,10 @@ class ConfigDiagnostics:
     def get_build_diagnostics(self, request: BuildRequestData) -> DiagnosticResult:
         required = list(self.COMMON_BUILD_VARS)
 
-        lane_key = f"{request.flavor.upper()}_FASTLANE_LANE"
+        if request.trigger_source in {"shorebird", "shorebird_manual"}:
+            lane_key = f"SHOREBIRD_{request.flavor.upper()}_FASTLANE_LANE"
+        else:
+            lane_key = f"{request.flavor.upper()}_FASTLANE_LANE"
         branch_key = f"{request.flavor.upper()}_BRANCH_NAME"
         required.extend([lane_key, branch_key])
 

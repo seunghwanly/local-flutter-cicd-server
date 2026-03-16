@@ -279,7 +279,9 @@
         .info-row {
             display: flex;
             margin-bottom: 12px;
-            align-items: center;
+            align-items: flex-start;
+            gap: 12px;
+            min-width: 0;
         }
 
         .info-label {
@@ -292,9 +294,11 @@
         .info-value {
             font-weight: 500;
             font-size: 0.9rem;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
+            flex: 1 1 auto;
+            min-width: 0;
+            white-space: normal;
+            overflow-wrap: anywhere;
+            word-break: break-word;
         }
 
         .tag {
@@ -303,6 +307,12 @@
             border-radius: 4px;
             font-size: 0.8rem;
             margin-right: 6px;
+            margin-bottom: 6px;
+            display: inline-block;
+            max-width: 100%;
+            white-space: normal;
+            overflow-wrap: anywhere;
+            word-break: break-word;
         }
 
         .platform-status-list {
@@ -314,7 +324,7 @@
         .platform-status-item {
             display: flex;
             justify-content: space-between;
-            align-items: center;
+            align-items: flex-start;
             gap: 12px;
             background: rgba(255, 255, 255, 0.05);
             border: 1px solid rgba(255, 255, 255, 0.06);
@@ -335,9 +345,9 @@
         .platform-status-message {
             font-size: 0.88rem;
             font-weight: 500;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
+            white-space: normal;
+            overflow-wrap: anywhere;
+            word-break: break-word;
         }
 
         .time {
@@ -803,19 +813,24 @@
             return '아직 실행되지 않음';
         };
 
-        const renderStageLogs = (logs) => {
+        const getStageKey = (stage) => String(stage?.name || 'unknown');
+
+        const renderStageLogs = (logs, stageKey) => {
             if (!logs || !logs.length) {
                 return '<div class="stage-log-empty">이 스텝에 기록된 로그가 아직 없습니다.</div>';
             }
-            return `<div class="stage-log-list">${logs.map(formatLogLine).join('')}</div>`;
+            return `<div class="stage-log-list" data-stage-key="${escapeHtml(stageKey)}">${logs.map(formatLogLine).join('')}</div>`;
         };
 
-        const renderStageItem = (stage) => {
-            const isOpen = stage.status === 'running' || stage.status === 'failed';
+        const renderStageItem = (stage, preservedState = null) => {
+            const stageKey = getStageKey(stage);
+            const isOpen = preservedState?.hasAccordions
+                ? preservedState.openStageKeys.includes(stageKey)
+                : (stage.status === 'running' || stage.status === 'failed');
             const logCount = Array.isArray(stage.logs) ? stage.logs.length : 0;
             return `
                 <div class="stage-item">
-                    <details class="stage-accordion" ${isOpen ? 'open' : ''}>
+                    <details class="stage-accordion" data-stage-key="${escapeHtml(stageKey)}" ${isOpen ? 'open' : ''}>
                         <summary class="stage-summary">
                             <div class="stage-top">
                                 <div>
@@ -834,7 +849,7 @@
                         </summary>
                         <div class="stage-log-panel">
                             <div class="stage-log-title">Step Logs</div>
-                            ${renderStageLogs(stage.logs)}
+                            ${renderStageLogs(stage.logs, stageKey)}
                         </div>
                     </details>
                 </div>
@@ -870,6 +885,7 @@
         let modalPollingInterval = null;
         let currentModalBuildId = null;
         let cancelInFlight = new Set();
+        let modalStageState = null;
 
         const setConnectionState = (state, label) => {
             const dot = document.getElementById('connection-dot');
@@ -922,6 +938,42 @@
             const container = document.getElementById('modal-cancel-action');
             if (!container) return;
             container.innerHTML = getCancelButtonHtml(buildId, status);
+        };
+
+        const captureModalStageState = () => {
+            const modalBody = document.querySelector('#log-modal .modal-body');
+            const stageContainer = document.getElementById('modal-stages');
+            if (!modalBody || !stageContainer) return null;
+
+            const accordions = Array.from(stageContainer.querySelectorAll('.stage-accordion'));
+
+            return {
+                hasAccordions: accordions.length > 0,
+                modalBodyScrollTop: modalBody.scrollTop,
+                openStageKeys: accordions
+                    .filter((element) => element.open)
+                    .map((element) => element.dataset.stageKey),
+                stageLogScrollTop: Object.fromEntries(
+                    Array.from(stageContainer.querySelectorAll('.stage-log-list'))
+                        .map((element) => [element.dataset.stageKey, element.scrollTop])
+                ),
+            };
+        };
+
+        const restoreModalStageState = (state) => {
+            if (!state) return;
+
+            const modalBody = document.querySelector('#log-modal .modal-body');
+            if (modalBody) {
+                modalBody.scrollTop = state.modalBodyScrollTop || 0;
+            }
+
+            Object.entries(state.stageLogScrollTop || {}).forEach(([stageKey, scrollTop]) => {
+                const logList = document.querySelector(`.stage-log-list[data-stage-key="${stageKey}"]`);
+                if (logList) {
+                    logList.scrollTop = scrollTop;
+                }
+            });
         };
 
         const fetchDiagnostics = async () => {
@@ -1077,9 +1129,11 @@
 
             const stageContainer = document.getElementById('modal-stages');
             const stages = data.stages || [];
+            modalStageState = captureModalStageState();
             stageContainer.innerHTML = stages.length
-                ? stages.map(renderStageItem).join('')
+                ? stages.map((stage) => renderStageItem(stage, modalStageState)).join('')
                 : '<div class="stage-item">현재 실행된 파이프라인 스테이지가 없습니다.</div>';
+            restoreModalStageState(modalStageState);
             
             const logContainer = document.getElementById('modal-logs');
             if (data.logs && data.logs.length > 0) {
@@ -1104,6 +1158,7 @@
 
         window.openModal = async (buildId) => {
             currentModalBuildId = buildId;
+            modalStageState = null;
             const overlay = document.getElementById('log-modal');
             const buildSummary = currentBuilds[buildId] || {};
             
@@ -1125,6 +1180,7 @@
         window.closeModal = () => {
             document.getElementById('log-modal').classList.remove('active');
             document.getElementById('modal-cancel-action').innerHTML = '';
+            modalStageState = null;
             if (modalPollingInterval) {
                 clearInterval(modalPollingInterval);
                 modalPollingInterval = null;
