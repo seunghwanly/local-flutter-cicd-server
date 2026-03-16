@@ -11,7 +11,7 @@ run:
 
 doctor:
 	./venv/bin/python -m compileall src
-	bash -n action/1_android.sh action/1_ios.sh local_run.sh
+	bash -n action/1_android.sh action/1_ios.sh local_run.sh scripts/restart_local_server.sh
 
 test:
 	./venv/bin/python -m unittest discover -s tests -p 'test_*.py'
