@@ -369,6 +369,7 @@ def get_isolated_env(build_id: str, flutter_version: str = None, gradle_version:
     env["DERIVED_DATA_PATH"] = str(deriveddata_cache_dir)
     env["PATH"] = f"{gem_home_dir / 'bin'}:{pub_cache_dir / 'bin'}:{env.get('PATH', '/usr/local/bin:/usr/bin:/bin')}"
     env["HOME"] = str(Path.home().resolve())  # 명시적 HOME 설정 (절대 경로)
+    env["RUBY_VERSION"] = env.get("RUBY_VERSION", "3.2.0")
     
     # Git 자격증명 설정
     setup_git_credentials(workspace, env)
