@@ -246,6 +246,59 @@ class SetupExecutorTests(unittest.TestCase):
         self.assertEqual("secret", context.env["MATCH_KEYCHAIN_PASSWORD"])
         self.assertTrue(any("Prepared keychain" in line for line in logs))
 
+    def test_prepare_ios_toolchain_tolerates_login_keychain_unlock_failure(self) -> None:
+        runner = FakeCommandRunner()
+        executor = SetupExecutor(runner)
+        logs: list[str] = []
+
+        with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as home:
+            keychain_dir = Path(home) / "Library" / "Keychains"
+            keychain_dir.mkdir(parents=True, exist_ok=True)
+            keychain_path = keychain_dir / "login.keychain-db"
+            keychain_path.write_text("", encoding="utf-8")
+
+            runner.add_response(["security", "list-keychains", "-d", "user"], stdout="    \"/tmp/other.keychain-db\"\n")
+            runner.add_response(
+                ["security", "list-keychains", "-d", "user", "-s", "/tmp/other.keychain-db", str(keychain_path.resolve())]
+            )
+            runner.add_response(
+                ["security", "unlock-keychain", "-p", "wrong-secret", str(keychain_path.resolve())],
+                returncode=51,
+                stdout="security: unlock failed",
+            )
+            runner.add_response(["security", "set-keychain-settings", "-lut", "21600", str(keychain_path.resolve())])
+            runner.add_response(["security", "default-keychain", "-d", "user", "-s", str(keychain_path.resolve())])
+            runner.add_response(["rbenv", "versions", "--bare"], stdout="3.2.0\n")
+            runner.add_response(["ruby", "-e", "print RUBY_VERSION"], stdout="3.2.0")
+            runner.add_response(["gem", "list", "-i", "cocoapods"], returncode=0)
+            runner.add_response(["gem", "list", "-i", "fastlane"], returncode=0)
+
+            repo_dir = Path(tmp) / "repo"
+            ios_dir = repo_dir / "ios"
+            ios_dir.mkdir(parents=True)
+            context = BuildRuntimeContext(
+                env={
+                    "GEM_HOME": "/tmp/gems",
+                    "KEYCHAIN_NAME": "login.keychain",
+                    "KEYCHAIN_PASSWORD": "wrong-secret",
+                },
+                repo_dir=str(repo_dir),
+                workspace=tmp,
+            )
+
+            with patch("pathlib.Path.home", return_value=Path(home)):
+                executor.prepare_platform_toolchain(
+                    build_id="build-keychain-fallback",
+                    platform="ios",
+                    context=context,
+                    log=logs.append,
+                )
+
+        self.assertIn(("security", "default-keychain", "-d", "user", "-s", str(keychain_path.resolve())), runner.calls)
+        self.assertEqual(str(keychain_path.resolve()), context.env["MATCH_KEYCHAIN_NAME"])
+        self.assertNotIn("MATCH_KEYCHAIN_PASSWORD", context.env)
+        self.assertTrue(any("login keychain unlock failed" in line for line in logs))
+
     def test_prepare_android_toolchain_fails_when_lockfile_requires_newer_ruby(self) -> None:
         runner = FakeCommandRunner()
         executor = SetupExecutor(runner)
