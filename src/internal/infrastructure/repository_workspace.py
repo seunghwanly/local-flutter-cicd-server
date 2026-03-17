@@ -22,11 +22,13 @@ class PreparedRepositoryResult:
         precache_ran: bool,
         repo_dir: str,
         workspace_lease: WorkspaceSlotLease | None,
+        flutter_version_changed: bool = False,
     ) -> None:
         self.flutter_version = flutter_version
         self.precache_ran = precache_ran
         self.repo_dir = repo_dir
         self.workspace_lease = workspace_lease
+        self.flutter_version_changed = flutter_version_changed
 
 
 class RepositoryWorkspaceManager:
@@ -116,6 +118,7 @@ class RepositoryWorkspaceManager:
                 precache_ran=precache_ran,
                 repo_dir=str(repo_path),
                 workspace_lease=workspace_lease,
+                flutter_version_changed=version_changed,
             )
         except Exception:
             workspace_lease.release()

@@ -15,6 +15,7 @@ from src.internal.infrastructure.repository_workspace import PreparedRepositoryR
 class StubRepositoryWorkspaceManager:
     def __init__(self) -> None:
         self.calls = []
+        self.flutter_version_changed = False
 
     def prepare(self, **kwargs):
         self.calls.append(kwargs)
@@ -25,6 +26,7 @@ class StubRepositoryWorkspaceManager:
             precache_ran=False,
             repo_dir=str(repo_dir),
             workspace_lease=None,
+            flutter_version_changed=self.flutter_version_changed,
         )
 
 
@@ -76,6 +78,8 @@ class BuildEnvironmentAssemblerTests(unittest.TestCase):
 
         self.assertEqual("patch_prod", runtime.env["FASTLANE_LANE"])
         self.assertEqual("false", runtime.env["IOS_USE_BUNDLER"])
+        self.assertEqual("auto", runtime.env["IOS_RUN_POD_INSTALL"])
+        self.assertEqual("false", runtime.env["IOS_FLUTTER_SDK_CHANGED"])
         self.assertEqual("shorebird_manual", runtime.env["TRIGGER_SOURCE"])
         self.assertTrue(any("Shorebird patch config" in line for line in logs))
         self.assertEqual("release/2.2.1-hotfix", repo_manager.calls[0]["branch_name"])
@@ -123,6 +127,8 @@ class BuildEnvironmentAssemblerTests(unittest.TestCase):
 
         self.assertEqual("custom_patch_stage", runtime.env["FASTLANE_LANE"])
         self.assertEqual("false", runtime.env["IOS_USE_BUNDLER"])
+        self.assertEqual("auto", runtime.env["IOS_RUN_POD_INSTALL"])
+        self.assertEqual("false", runtime.env["IOS_FLUTTER_SDK_CHANGED"])
 
     def test_regular_build_uses_flavor_lane(self) -> None:
         repo_manager = StubRepositoryWorkspaceManager()
@@ -163,8 +169,94 @@ class BuildEnvironmentAssemblerTests(unittest.TestCase):
 
         self.assertEqual("deploy_stage", runtime.env["FASTLANE_LANE"])
         self.assertEqual("true", runtime.env["IOS_USE_BUNDLER"])
+        self.assertEqual("auto", runtime.env["IOS_RUN_POD_INSTALL"])
+        self.assertEqual("false", runtime.env["IOS_FLUTTER_SDK_CHANGED"])
         self.assertEqual("manual", runtime.env["TRIGGER_SOURCE"])
         self.assertNotIn("SHOREBIRD_RELEASE_VERSION", runtime.env)
+
+    def test_regular_build_can_enable_pod_install_via_environment(self) -> None:
+        repo_manager = StubRepositoryWorkspaceManager()
+        assembler = BuildEnvironmentAssembler(repo_manager)
+        request = BuildRequestData(
+            flavor="stage",
+            platform="ios",
+            trigger_source="manual",
+            branch_name="stage",
+        )
+        job = BuildJob.create("build-3", request, request.branch_name or "stage", "queue-3")
+
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(
+            os.environ,
+            {
+                "STAGE_FASTLANE_LANE": "deploy_stage",
+                "REPO_URL": "git@github.com:org/app.git",
+                "IOS_RUN_POD_INSTALL": "true",
+            },
+            clear=False,
+        ), patch(
+            "src.internal.application.build_environment.get_isolated_env",
+            return_value={
+                "env": {},
+                "repo_dir": str(Path(tmp) / "repo"),
+                "deriveddata_cache_dir": str(Path(tmp) / "DerivedData"),
+            },
+        ), patch(
+            "src.internal.application.build_environment.get_build_workspace",
+            return_value=Path(tmp) / "workspace",
+        ):
+            runtime = assembler.assemble(
+                job,
+                ResolvedVersions(
+                    flutter_sdk_version="3.24.0",
+                    gradle_version=None,
+                    cocoapods_version=None,
+                    fastlane_version=None,
+                ),
+                lambda _: None,
+            )
+
+        self.assertEqual("true", runtime.env["IOS_RUN_POD_INSTALL"])
+        self.assertEqual("false", runtime.env["IOS_FLUTTER_SDK_CHANGED"])
+
+    def test_regular_build_marks_flutter_sdk_change_in_environment(self) -> None:
+        repo_manager = StubRepositoryWorkspaceManager()
+        repo_manager.flutter_version_changed = True
+        assembler = BuildEnvironmentAssembler(repo_manager)
+        request = BuildRequestData(
+            flavor="stage",
+            platform="ios",
+            trigger_source="manual",
+            branch_name="stage",
+        )
+        job = BuildJob.create("build-4", request, request.branch_name or "stage", "queue-4")
+
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(
+            os.environ,
+            {"STAGE_FASTLANE_LANE": "deploy_stage", "REPO_URL": "git@github.com:org/app.git"},
+            clear=False,
+        ), patch(
+            "src.internal.application.build_environment.get_isolated_env",
+            return_value={
+                "env": {},
+                "repo_dir": str(Path(tmp) / "repo"),
+                "deriveddata_cache_dir": str(Path(tmp) / "DerivedData"),
+            },
+        ), patch(
+            "src.internal.application.build_environment.get_build_workspace",
+            return_value=Path(tmp) / "workspace",
+        ):
+            runtime = assembler.assemble(
+                job,
+                ResolvedVersions(
+                    flutter_sdk_version="3.24.0",
+                    gradle_version=None,
+                    cocoapods_version=None,
+                    fastlane_version=None,
+                ),
+                lambda _: None,
+            )
+
+        self.assertEqual("true", runtime.env["IOS_FLUTTER_SDK_CHANGED"])
 
 
 if __name__ == "__main__":
