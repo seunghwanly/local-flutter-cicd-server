@@ -83,6 +83,96 @@ class ShorebirdCacheValidator:
         return normalized_host == artifact_arch
 
 
+class IOSKeychainPreparer:
+    """Unlock and register the macOS keychain used by iOS signing."""
+
+    def __init__(self, command_runner: CommandRunner) -> None:
+        self.command_runner = command_runner
+
+    def prepare(self, build_id: str, context: BuildRuntimeContext, cwd: Path, log, should_cancel=None) -> None:
+        keychain_name = (context.env.get("KEYCHAIN_NAME") or "").strip()
+        keychain_password = context.env.get("KEYCHAIN_PASSWORD")
+        if not keychain_name:
+            log(f"[{build_id}] ℹ️ KEYCHAIN_NAME not set; skipping keychain preparation")
+            return
+        if not keychain_password:
+            raise RuntimeError("KEYCHAIN_PASSWORD is required when KEYCHAIN_NAME is set")
+
+        keychain_path = self._resolve_keychain_path(keychain_name)
+        if not keychain_path:
+            raise RuntimeError(f"Configured keychain '{keychain_name}' could not be found")
+
+        keychain_str = str(keychain_path)
+        existing = self.command_runner.run(
+            ["security", "list-keychains", "-d", "user"],
+            env=context.env,
+            cwd=str(cwd),
+            check=False,
+            should_stop=should_cancel,
+        )
+        search_list = self._parse_keychains(existing.stdout)
+        if keychain_str not in search_list:
+            search_list.append(keychain_str)
+            self.command_runner.run_checked(
+                ["security", "list-keychains", "-d", "user", "-s", *search_list],
+                env=context.env,
+                cwd=str(cwd),
+                should_stop=should_cancel,
+            )
+
+        self.command_runner.run_checked(
+            ["security", "unlock-keychain", "-p", keychain_password, keychain_str],
+            env=context.env,
+            cwd=str(cwd),
+            should_stop=should_cancel,
+        )
+        self.command_runner.run_checked(
+            ["security", "set-keychain-settings", "-lut", "21600", keychain_str],
+            env=context.env,
+            cwd=str(cwd),
+            should_stop=should_cancel,
+        )
+        self.command_runner.run_checked(
+            ["security", "default-keychain", "-d", "user", "-s", keychain_str],
+            env=context.env,
+            cwd=str(cwd),
+            should_stop=should_cancel,
+        )
+        context.env["MATCH_KEYCHAIN_NAME"] = keychain_str
+        context.env["MATCH_KEYCHAIN_PASSWORD"] = keychain_password
+        log(f"[{build_id}] 🔐 Prepared keychain: {keychain_path.name}")
+
+    def _resolve_keychain_path(self, keychain_name: str) -> Path | None:
+        provided = Path(keychain_name).expanduser()
+        if provided.exists():
+            return provided.resolve()
+
+        keychain_dir = Path.home() / "Library" / "Keychains"
+        candidates = [keychain_name]
+        if keychain_name.endswith(".keychain"):
+            candidates.append(f"{keychain_name}-db")
+        elif not keychain_name.endswith(".keychain-db"):
+            candidates.extend(
+                [
+                    f"{keychain_name}.keychain-db",
+                    f"{keychain_name}.keychain",
+                ]
+            )
+        for candidate in candidates:
+            path = (keychain_dir / candidate).expanduser()
+            if path.exists():
+                return path.resolve()
+        return None
+
+    def _parse_keychains(self, output: str) -> list[str]:
+        parsed: list[str] = []
+        for line in output.splitlines():
+            stripped = line.strip().strip('"')
+            if stripped:
+                parsed.append(str(Path(stripped).expanduser()))
+        return parsed
+
+
 class PlatformToolchainPreparer:
     """Prepare per-platform Ruby and native build toolchains."""
 
@@ -91,10 +181,12 @@ class PlatformToolchainPreparer:
         command_runner: CommandRunner,
         ruby_toolchain: RubyToolchainPreparer | None = None,
         shorebird_validator: ShorebirdCacheValidator | None = None,
+        ios_keychain: IOSKeychainPreparer | None = None,
     ) -> None:
         self.command_runner = command_runner
         self.ruby_toolchain = ruby_toolchain or RubyToolchainPreparer(command_runner)
         self.shorebird_validator = shorebird_validator or ShorebirdCacheValidator(command_runner)
+        self.ios_keychain = ios_keychain or IOSKeychainPreparer(command_runner)
 
     def prepare(
         self,
@@ -140,6 +232,7 @@ class PlatformToolchainPreparer:
         if not ios_dir.exists():
             return
 
+        self.ios_keychain.prepare(build_id, context, ios_dir, log, should_cancel=should_cancel)
         self.ruby_toolchain.configure_environment(ios_dir, context.env, build_id, log, should_cancel=should_cancel)
         if (ios_dir / "Gemfile").exists():
             self.ruby_toolchain.ensure_gem(

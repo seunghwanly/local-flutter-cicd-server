@@ -38,7 +38,9 @@ class RubyToolchainPreparer:
 
         current_ruby = self.current_ruby_version(cwd, env, should_cancel=should_cancel)
         if current_ruby:
+            self._scope_gem_environment(env, current_ruby)
             log(f"[{build_id}] 💎 Active Ruby version: {current_ruby}")
+            log(f"[{build_id}] 💎 Ruby gem home: {env.get('GEM_HOME')}")
 
         lockfile_ruby = self._parse_lockfile_ruby_version(cwd)
         if lockfile_ruby and current_ruby and self._compare_versions(current_ruby, lockfile_ruby) < 0:
@@ -100,7 +102,9 @@ class RubyToolchainPreparer:
         bundler_version: str | None = None,
         should_cancel=None,
     ) -> None:
-        bundle_path = str(Path(env["GEM_HOME"]) / "bundle")
+        bundle_path = env.get("BUNDLE_PATH") or str(Path(env["GEM_HOME"]) / "bundle")
+        env["BUNDLE_PATH"] = bundle_path
+        env["BUNDLE_DISABLE_SHARED_GEMS"] = env.get("BUNDLE_DISABLE_SHARED_GEMS", "true")
         bundle_command = self._bundle_command(bundler_version, "config", "set", "--local", "path", bundle_path)
         self.command_runner.run_checked(
             bundle_command,
@@ -294,6 +298,25 @@ class RubyToolchainPreparer:
                 merged.append(entry)
         env["PATH"] = ":".join(merged)
 
+    def _scope_gem_environment(self, env: Dict[str, str], ruby_version: str) -> None:
+        gem_home_value = env.get("GEM_HOME")
+        if not gem_home_value:
+            return
+
+        gem_home_root = Path(gem_home_value).expanduser()
+        scoped_name = f"ruby-{ruby_version}"
+        scoped_gem_home = gem_home_root if gem_home_root.name == scoped_name else gem_home_root / scoped_name
+        scoped_gem_home.mkdir(parents=True, exist_ok=True)
+
+        env["GEM_HOME"] = str(scoped_gem_home)
+        env["GEM_PATH"] = str(scoped_gem_home)
+        env["BUNDLE_PATH"] = str(scoped_gem_home / "bundle")
+        env["BUNDLE_DISABLE_SHARED_GEMS"] = "true"
+
+        bin_path = str(scoped_gem_home / "bin")
+        path_entries = env.get("PATH", "").split(":") if env.get("PATH") else []
+        if bin_path not in path_entries:
+            env["PATH"] = ":".join([bin_path, *path_entries]) if path_entries else bin_path
     def _select_ruby_version(
         self,
         cwd: Path,
