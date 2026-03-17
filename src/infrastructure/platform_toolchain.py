@@ -95,14 +95,13 @@ class IOSKeychainPreparer:
         if not keychain_name:
             log(f"[{build_id}] ℹ️ KEYCHAIN_NAME not set; skipping keychain preparation")
             return
-        if not keychain_password:
-            raise RuntimeError("KEYCHAIN_PASSWORD is required when KEYCHAIN_NAME is set")
 
         keychain_path = self._resolve_keychain_path(keychain_name)
         if not keychain_path:
             raise RuntimeError(f"Configured keychain '{keychain_name}' could not be found")
 
         keychain_str = str(keychain_path)
+        is_login_keychain = self._is_login_keychain(keychain_path)
         existing = self.command_runner.run(
             ["security", "list-keychains", "-d", "user"],
             env=context.env,
@@ -120,18 +119,39 @@ class IOSKeychainPreparer:
                 should_stop=should_cancel,
             )
 
-        self.command_runner.run_checked(
-            ["security", "unlock-keychain", "-p", keychain_password, keychain_str],
-            env=context.env,
-            cwd=str(cwd),
-            should_stop=should_cancel,
-        )
-        self.command_runner.run_checked(
-            ["security", "set-keychain-settings", "-lut", "21600", keychain_str],
-            env=context.env,
-            cwd=str(cwd),
-            should_stop=should_cancel,
-        )
+        unlocked_with_password = False
+        if keychain_password:
+            try:
+                self.command_runner.run_checked(
+                    ["security", "unlock-keychain", "-p", keychain_password, keychain_str],
+                    env=context.env,
+                    cwd=str(cwd),
+                    should_stop=should_cancel,
+                )
+                unlocked_with_password = True
+            except Exception as exc:
+                if not is_login_keychain:
+                    raise RuntimeError(f"Failed to unlock configured keychain '{keychain_name}': {exc}") from exc
+                log(
+                    f"[{build_id}] ⚠️ login keychain unlock failed with KEYCHAIN_PASSWORD; "
+                    "continuing with existing user session state"
+                )
+        elif is_login_keychain:
+                log(f"[{build_id}] ℹ️ KEYCHAIN_PASSWORD not set for login keychain; using existing user session state")
+        else:
+            raise RuntimeError("KEYCHAIN_PASSWORD is required when KEYCHAIN_NAME points to a custom keychain")
+
+        try:
+            self.command_runner.run_checked(
+                ["security", "set-keychain-settings", "-lut", "21600", keychain_str],
+                env=context.env,
+                cwd=str(cwd),
+                should_stop=should_cancel,
+            )
+        except Exception as exc:
+            if not is_login_keychain:
+                raise RuntimeError(f"Failed to configure keychain settings for '{keychain_name}': {exc}") from exc
+            log(f"[{build_id}] ⚠️ login keychain settings update failed; continuing with existing settings")
         self.command_runner.run_checked(
             ["security", "default-keychain", "-d", "user", "-s", keychain_str],
             env=context.env,
@@ -139,7 +159,10 @@ class IOSKeychainPreparer:
             should_stop=should_cancel,
         )
         context.env["MATCH_KEYCHAIN_NAME"] = keychain_str
-        context.env["MATCH_KEYCHAIN_PASSWORD"] = keychain_password
+        if unlocked_with_password or not is_login_keychain:
+            context.env["MATCH_KEYCHAIN_PASSWORD"] = keychain_password or ""
+        else:
+            context.env.pop("MATCH_KEYCHAIN_PASSWORD", None)
         log(f"[{build_id}] 🔐 Prepared keychain: {keychain_path.name}")
 
     def _resolve_keychain_path(self, keychain_name: str) -> Path | None:
@@ -172,6 +195,9 @@ class IOSKeychainPreparer:
                 parsed.append(str(Path(stripped).expanduser()))
         return parsed
 
+    def _is_login_keychain(self, keychain_path: Path) -> bool:
+        name = keychain_path.name
+        return name in {"login.keychain", "login.keychain-db"}
 
 class PlatformToolchainPreparer:
     """Prepare per-platform Ruby and native build toolchains."""
