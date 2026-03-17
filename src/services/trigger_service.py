@@ -178,4 +178,3 @@ class ShorebirdActionService:
 
 
 github_action_service = GitHubActionService()
-shorebird_action_service = ShorebirdActionService()

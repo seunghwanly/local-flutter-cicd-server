@@ -6,10 +6,9 @@ Flutter CI/CD Server - Services Package
 - trigger_service: 외부 action 트리거 서비스
 """
 from .build_pipeline_service import build_service
-from .trigger_service import github_action_service, shorebird_action_service
+from .trigger_service import github_action_service
 
 __all__ = [
     "build_service",
     "github_action_service",
-    "shorebird_action_service",
 ]

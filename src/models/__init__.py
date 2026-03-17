@@ -13,8 +13,6 @@ __all__ = [
     "BuildSummary",
     "BuildsResponse",
     "ActionResponse",
-    "ShorebirdWebhookMetadata",
-    "ShorebirdWebhookRequest",
     "ManualBuildResponse",
     "CancelBuildResponse",
     "RootResponse",

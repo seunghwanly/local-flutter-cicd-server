@@ -20,7 +20,7 @@ from ..models import (
 from ..services.build_pipeline_service import BuildService
 
 
-router = APIRouter(tags=["Build Status"])
+router = APIRouter()
 
 
 def _normalize_shorebird_manual_flavor(value: str) -> str:
@@ -39,7 +39,7 @@ def _normalize_shorebird_manual_flavor(value: str) -> str:
     return normalized
 
 
-@router.get("/build/{build_id}", response_model=BuildStatusResponse)
+@router.get("/build/{build_id}", response_model=BuildStatusResponse, tags=["Build Status"])
 async def get_build_status(
     build_id: str,
     build_service: BuildService = Depends(get_build_service),
@@ -50,12 +50,12 @@ async def get_build_status(
     return build_status
 
 
-@router.get("/builds", response_model=BuildsResponse)
+@router.get("/builds", response_model=BuildsResponse, tags=["Build Status"])
 async def list_builds(build_service: BuildService = Depends(get_build_service)) -> BuildsResponse:
     return {"builds": build_service.list_builds()}
 
 
-@router.post("/build/{build_id}/cancel", response_model=CancelBuildResponse)
+@router.post("/build/{build_id}/cancel", response_model=CancelBuildResponse, tags=["Manual Build"])
 async def cancel_build(
     build_id: str,
     build_service: BuildService = Depends(get_build_service),
@@ -160,4 +160,3 @@ async def manual_build(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"status": "manual trigger ok", "build_id": build_id}
-
