@@ -12,7 +12,7 @@ from fastapi import FastAPI
 
 from ..internal.application import ConfigDiagnostics
 from ..services.build_pipeline_service import BuildService
-from ..services.trigger_service import GitHubActionService, ShorebirdActionService
+from ..services.trigger_service import GitHubActionService
 from ..utils.cleanup import start_cleanup_scheduler
 from .dependencies import ServiceContainer
 from .settings import AppSettings, bootstrap_environment, get_settings
@@ -52,14 +52,6 @@ def build_container(settings: AppSettings) -> ServiceContainer:
         github_action_service=GitHubActionService(
             build_service=build_service,
             webhook_secret=settings.github_webhook_secret,
-        ),
-        shorebird_action_service=ShorebirdActionService(
-            build_service=build_service,
-            webhook_secret=settings.github_webhook_secret,
-            prod_tag_pattern=settings.webhook_prod_tag_pattern,
-            default_flavor=settings.shorebird_patch_flavor,
-            default_platform=settings.shorebird_patch_platform,
-            default_branch_name=settings.shorebird_patch_branch_name,
         ),
     )
 

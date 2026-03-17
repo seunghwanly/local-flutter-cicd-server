@@ -165,16 +165,7 @@ GitHub에서 전송되는 일반 build action 이벤트를 처리합니다.
 - **PR 머지**: release/dev* 브랜치로 머지될 때 dev 빌드 트리거
 - **태그 생성**: x.y.z 형식의 태그가 생성될 때 prod 빌드 트리거
 
-### 6. GitHub Shorebird Action
-
-**POST** `/github-action/shorebird`
-
-GitHub가 전달한 Shorebird prod 태그 생성 이벤트를 처리합니다.
-
-**지원하는 이벤트:**
-- **태그 생성**: x.y.z 형식의 태그가 생성될 때 prod shorebird 빌드 트리거
-
-### 7. 수동 Shorebird 빌드
+### 6. 수동 Shorebird 빌드
 
 **POST** `/build/shorebird`
 

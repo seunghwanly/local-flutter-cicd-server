@@ -8,7 +8,7 @@ from fastapi import Depends, Request
 
 from ..internal.application import ConfigDiagnostics
 from ..services.build_pipeline_service import BuildService
-from ..services.trigger_service import GitHubActionService, ShorebirdActionService
+from ..services.trigger_service import GitHubActionService
 from .settings import AppSettings
 
 
@@ -18,7 +18,6 @@ class ServiceContainer:
     diagnostics: ConfigDiagnostics
     build_service: BuildService
     github_action_service: GitHubActionService
-    shorebird_action_service: ShorebirdActionService
 
 
 def get_container(request: Request) -> ServiceContainer:
@@ -41,9 +40,3 @@ def get_github_action_service(
     container: ServiceContainer = Depends(get_container),
 ) -> GitHubActionService:
     return container.github_action_service
-
-
-def get_shorebird_action_service(
-    container: ServiceContainer = Depends(get_container),
-) -> ShorebirdActionService:
-    return container.shorebird_action_service
