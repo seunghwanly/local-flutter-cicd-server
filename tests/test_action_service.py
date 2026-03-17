@@ -6,8 +6,9 @@ import os
 import unittest
 from unittest.mock import patch
 
-from src.application.webhook_policy import WebhookPolicy
-from src.services.action_service import GitHubActionService, ShorebirdActionService
+from src.models import BuildPipelineRequestDto
+from src.internal.application.webhook_policy import WebhookPolicy
+from src.services.trigger_service import GitHubActionService, ShorebirdActionService
 
 
 class GitHubActionServiceTests(unittest.TestCase):
@@ -76,7 +77,7 @@ class ShorebirdActionServiceTests(unittest.TestCase):
 
             self.assertTrue(service.verify_signature(payload, f"sha256={expected}"))
 
-    @patch("src.services.action_service.build_service.start_build_pipeline")
+    @patch("src.services.trigger_service.build_service.start_build_pipeline")
     def test_handle_uses_tag_event_for_patch_trigger(self, start_build_pipeline) -> None:
         start_build_pipeline.return_value = "build-123"
         payload = {"ref_type": "tag", "ref": "1.2.3"}
@@ -95,16 +96,18 @@ class ShorebirdActionServiceTests(unittest.TestCase):
 
         self.assertEqual({"status": "ok", "build_id": "build-123"}, result)
         start_build_pipeline.assert_called_once_with(
-            flavor="prod",
-            platform="ios",
-            trigger_source="shorebird",
-            trigger_event_id="shorebird-1",
-            build_name="1.2.3",
-            build_number=None,
-            branch_name="main",
+            BuildPipelineRequestDto(
+                flavor="prod",
+                platform="ios",
+                trigger_source="shorebird",
+                trigger_event_id="shorebird-1",
+                build_name="1.2.3",
+                build_number=None,
+                branch_name="main",
+            )
         )
 
-    @patch("src.services.action_service.build_service.start_build_pipeline")
+    @patch("src.services.trigger_service.build_service.start_build_pipeline")
     def test_handle_prefers_payload_build_metadata_when_present(self, start_build_pipeline) -> None:
         start_build_pipeline.return_value = "build-456"
         payload = {
@@ -130,16 +133,18 @@ class ShorebirdActionServiceTests(unittest.TestCase):
 
         self.assertEqual({"status": "ok", "build_id": "build-456"}, result)
         start_build_pipeline.assert_called_once_with(
-            flavor="prod",
-            platform="ios",
-            trigger_source="shorebird",
-            trigger_event_id="shorebird-3",
-            build_name="2.2.1",
-            build_number="689",
-            branch_name="main",
+            BuildPipelineRequestDto(
+                flavor="prod",
+                platform="ios",
+                trigger_source="shorebird",
+                trigger_event_id="shorebird-3",
+                build_name="2.2.1",
+                build_number="689",
+                branch_name="main",
+            )
         )
 
-    @patch("src.services.action_service.build_service.start_build_pipeline")
+    @patch("src.services.trigger_service.build_service.start_build_pipeline")
     def test_handle_accepts_flavor_from_payload_alias(self, start_build_pipeline) -> None:
         start_build_pipeline.return_value = "build-789"
         payload = {
@@ -166,16 +171,18 @@ class ShorebirdActionServiceTests(unittest.TestCase):
 
         self.assertEqual({"status": "ok", "build_id": "build-789"}, result)
         start_build_pipeline.assert_called_once_with(
-            flavor="stage",
-            platform="ios",
-            trigger_source="shorebird",
-            trigger_event_id="shorebird-4",
-            build_name="2.2.1",
-            build_number="689",
-            branch_name="main",
+            BuildPipelineRequestDto(
+                flavor="stage",
+                platform="ios",
+                trigger_source="shorebird",
+                trigger_event_id="shorebird-4",
+                build_name="2.2.1",
+                build_number="689",
+                branch_name="main",
+            )
         )
 
-    @patch("src.services.action_service.build_service.start_build_pipeline")
+    @patch("src.services.trigger_service.build_service.start_build_pipeline")
     def test_handle_ignores_non_tag_event(self, start_build_pipeline) -> None:
         service = ShorebirdActionService()
 

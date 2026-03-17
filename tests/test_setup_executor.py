@@ -7,8 +7,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 from src.core import BuildRuntimeContext
-from src.infrastructure.command_runner import CompletedCommand
-from src.infrastructure.setup_executor import SetupExecutor
+from src.internal.infrastructure.command_runner import CompletedCommand
+from src.internal.infrastructure.setup_executor import SetupExecutor
 
 
 class FakeCommandRunner:

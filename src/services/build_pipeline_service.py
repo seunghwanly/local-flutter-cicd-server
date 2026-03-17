@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ..application import (
+from ..internal.application import (
     BuildEnvironmentAssembler,
     BuildOrchestrator,
     BuildRepository,
@@ -11,8 +11,9 @@ from ..application import (
     ConfigDiagnostics,
     VersionResolver,
 )
-from ..domain import BuildRequestData
-from ..infrastructure import CommandRunner, RepositoryWorkspaceManager, SetupExecutor
+from ..internal.domain import BuildRequestData
+from ..internal.infrastructure import CommandRunner, RepositoryWorkspaceManager, SetupExecutor
+from ..models import BuildPipelineRequestDto
 
 
 class BuildService:
@@ -33,32 +34,15 @@ class BuildService:
             status_presenter=BuildStatusPresenter(),
         )
 
-    def start_build_pipeline(
-        self,
-        flavor: str,
-        platform: str,
-        trigger_source: str = "manual",
-        trigger_event_id: str = None,
-        build_name: str = None,
-        build_number: str = None,
-        branch_name: str = None,
-        flutter_sdk_version: str = None,
-        gradle_version: str = None,
-        cocoapods_version: str = None,
-        fastlane_version: str = None,
-    ) -> str:
+    def start_build_pipeline(self, request: BuildPipelineRequestDto) -> str:
         request = BuildRequestData(
-            flavor=flavor,
-            platform=platform,
-            trigger_source=trigger_source,
-            trigger_event_id=trigger_event_id,
-            build_name=build_name,
-            build_number=build_number,
-            branch_name=branch_name,
-            flutter_sdk_version=flutter_sdk_version,
-            gradle_version=gradle_version,
-            cocoapods_version=cocoapods_version,
-            fastlane_version=fastlane_version,
+            flavor=request.flavor,
+            platform=request.platform,
+            trigger_source=request.trigger_source,
+            trigger_event_id=request.trigger_event_id,
+            build_name=request.build_name,
+            build_number=request.build_number,
+            branch_name=request.branch_name,
         )
         return self.orchestrator.start_build(request)
 

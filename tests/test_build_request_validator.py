@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import unittest
 
-from src.application.validators import BuildRequestValidator
-from src.domain import BuildRequestData
+from src.internal.application.validators import BuildRequestValidator
+from src.internal.domain import BuildRequestData
 
 
 class BuildRequestValidatorTests(unittest.TestCase):

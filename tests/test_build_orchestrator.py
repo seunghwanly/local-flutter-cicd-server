@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import unittest
 
-from src.application.build_orchestrator import BuildOrchestrator
+from src.internal.application.build_orchestrator import BuildOrchestrator
 from src.core import BuildRuntimeContext
-from src.domain import BuildJob, BuildRequestData
+from src.internal.domain import BuildJob, BuildRequestData
 
 
 class StubRepository:

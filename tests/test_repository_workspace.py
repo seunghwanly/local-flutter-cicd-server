@@ -6,8 +6,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from unittest.mock import patch
 
-from src.infrastructure.command_runner import CompletedCommand
-from src.infrastructure.repository_workspace import RepositoryWorkspaceManager
+from src.internal.infrastructure.command_runner import CompletedCommand
+from src.internal.infrastructure.repository_workspace import RepositoryWorkspaceManager
 
 
 @dataclass

@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from src.infrastructure.workspace_pool import WorkspacePoolManager
+from src.internal.infrastructure.workspace_pool import WorkspacePoolManager
 
 
 class WorkspacePoolManagerTests(unittest.TestCase):
@@ -14,7 +14,7 @@ class WorkspacePoolManagerTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             shared_root = Path(tmp) / "shared"
-            with patch("src.infrastructure.workspace_pool.get_shared_cache_dir", return_value=shared_root):
+            with patch("src.internal.infrastructure.workspace_pool.get_shared_cache_dir", return_value=shared_root):
                 lease1 = manager.acquire(
                     build_id="build-1",
                     repo_url="git@github.com:org/repo.git",

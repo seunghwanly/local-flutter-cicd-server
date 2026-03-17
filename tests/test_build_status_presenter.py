@@ -3,10 +3,10 @@ from __future__ import annotations
 import unittest
 from unittest.mock import Mock
 
-from src.application.build_status_presenter import BuildStatusPresenter
-from src.domain import BuildStatus
-from src.domain import BuildJob, BuildRequestData
-from src.domain.builds import BuildStatus
+from src.internal.application.build_status_presenter import BuildStatusPresenter
+from src.internal.domain import BuildStatus
+from src.internal.domain import BuildJob, BuildRequestData
+from src.internal.domain.builds import BuildStatus
 
 
 class FakeProcess:
