@@ -72,6 +72,56 @@ if [ -z "$IOS_USE_BUNDLER" ]; then
         IOS_USE_BUNDLER=false
     fi
 fi
+IOS_RUN_POD_INSTALL="${IOS_RUN_POD_INSTALL:-auto}"
+SHOULD_RUN_POD_INSTALL=false
+POD_INSTALL_REASONS=()
+
+mark_pod_install_required() {
+    SHOULD_RUN_POD_INSTALL=true
+    POD_INSTALL_REASONS+=("$1")
+}
+
+evaluate_auto_pod_install() {
+    if [ ! -f "Podfile.lock" ]; then
+        mark_pod_install_required "Podfile.lock missing"
+    fi
+    if [ ! -f "Pods/Manifest.lock" ]; then
+        mark_pod_install_required "Pods/Manifest.lock missing"
+    fi
+    if [ ! -d "Runner.xcworkspace" ]; then
+        mark_pod_install_required "Runner.xcworkspace missing"
+    fi
+    if [ ! -f "Flutter/Generated.xcconfig" ]; then
+        mark_pod_install_required "Flutter/Generated.xcconfig missing"
+    fi
+    if [ -f "Podfile.lock" ] && [ -f "Pods/Manifest.lock" ] && ! cmp -s "Podfile.lock" "Pods/Manifest.lock"; then
+        mark_pod_install_required "Podfile.lock and Pods/Manifest.lock differ"
+    fi
+    if [ -f "Podfile" ] && [ -f "Pods/Manifest.lock" ] && [ "Podfile" -nt "Pods/Manifest.lock" ]; then
+        mark_pod_install_required "Podfile is newer than Pods/Manifest.lock"
+    fi
+    if [ -f "../.flutter-plugins-dependencies" ] && { [ ! -f "Pods/Manifest.lock" ] || [ "../.flutter-plugins-dependencies" -nt "Pods/Manifest.lock" ]; }; then
+        mark_pod_install_required ".flutter-plugins-dependencies is newer than Pods/Manifest.lock"
+    fi
+    if [ "${IOS_FLUTTER_SDK_CHANGED:-false}" = "true" ]; then
+        mark_pod_install_required "Flutter SDK version changed since previous sync"
+    fi
+}
+
+case "$IOS_RUN_POD_INSTALL" in
+    true|TRUE|1|yes|YES)
+        mark_pod_install_required "forced by IOS_RUN_POD_INSTALL=$IOS_RUN_POD_INSTALL"
+        ;;
+    false|FALSE|0|no|NO)
+        ;;
+    auto|AUTO|"")
+        evaluate_auto_pod_install
+        ;;
+    *)
+        echo "⚠️ Unknown IOS_RUN_POD_INSTALL=$IOS_RUN_POD_INSTALL, falling back to auto detection"
+        evaluate_auto_pod_install
+        ;;
+esac
 
 # # Flutter 아티팩트 준비
 # echo "📦 Ensuring flutter artifacts..."
@@ -118,28 +168,35 @@ else
 fi
 
 # pod install 실행
-echo "📚 Running pod install..."
-if [ -n "$COCOAPODS_VERSION" ]; then
-    if pod "_${COCOAPODS_VERSION}_" install; then
-        true
+if [ "$SHOULD_RUN_POD_INSTALL" = true ]; then
+    echo "📚 Running pod install..."
+    printf '  • %s\n' "${POD_INSTALL_REASONS[@]}"
+
+    if [ -n "$COCOAPODS_VERSION" ]; then
+        POD_INSTALL_CMD=(pod "_${COCOAPODS_VERSION}_" install)
+    elif [ "$IOS_USE_BUNDLER" = true ]; then
+        POD_INSTALL_CMD=(bundle exec pod install)
     else
-        echo "⚠️ pod install failed, retrying with --repo-update"
-        pod "_${COCOAPODS_VERSION}_" install --repo-update
+        POD_INSTALL_CMD=(pod install)
     fi
-elif [ "$IOS_USE_BUNDLER" = true ]; then
-    if bundle exec pod install; then
-        true
+
+    POD_INSTALL_LOG="$(mktemp)"
+    if "${POD_INSTALL_CMD[@]}" >"$POD_INSTALL_LOG" 2>&1; then
+        cat "$POD_INSTALL_LOG"
     else
-        echo "⚠️ pod install failed, retrying with --repo-update"
-        bundle exec pod install --repo-update
+        cat "$POD_INSTALL_LOG"
+        if grep -Eiq "Unable to find a specification|could not find compatible versions|out-of-date source repos|Specs satisfying the" "$POD_INSTALL_LOG"; then
+            echo "⚠️ pod install failed with a spec resolution error, retrying with --repo-update"
+            "${POD_INSTALL_CMD[@]}" --repo-update
+        else
+            echo "❌ pod install failed without a repo update hint"
+            rm -f "$POD_INSTALL_LOG"
+            exit 1
+        fi
     fi
+    rm -f "$POD_INSTALL_LOG"
 else
-    if pod install; then
-        true
-    else
-        echo "⚠️ pod install failed, retrying with --repo-update"
-        pod install --repo-update
-    fi
+    echo "⏭️ Skipping pod install (IOS_RUN_POD_INSTALL=$IOS_RUN_POD_INSTALL, auto-detect found no changes)"
 fi
 
 # # Fastlane match (필요시)
@@ -198,6 +255,7 @@ export GYM_XCARCHIVE_PATH="$DERIVED_DATA_PATH/Archives"
 # Fastlane 실행
 echo "🚀 Running: ${FASTLANE_CMD[*]}"
 echo "📦 Using Bundler for Ruby tools: $IOS_USE_BUNDLER"
+echo "📚 Run pod install: $SHOULD_RUN_POD_INSTALL"
 echo "🏗️ Using DerivedData path: $DERIVED_DATA_PATH"
 echo "🏗️ GYM_DERIVED_DATA_PATH: $GYM_DERIVED_DATA_PATH"
 echo "🏗️ GYM_XCARCHIVE_PATH: $GYM_XCARCHIVE_PATH"

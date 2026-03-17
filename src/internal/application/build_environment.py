@@ -36,6 +36,7 @@ class BuildEnvironmentAssembler:
                 "TRIGGER_SOURCE": job.trigger_source,
                 "FASTLANE_LANE": fastlane_lane,
                 "IOS_USE_BUNDLER": self._resolve_ios_use_bundler(job),
+                "IOS_RUN_POD_INSTALL": self._resolve_ios_run_pod_install(),
                 "DATADOG_API_KEY": os.environ.get("DATADOG_API_KEY", ""),
                 "GYM_DERIVED_DATA_PATH": isolated["deriveddata_cache_dir"],
                 "GYM_XCARCHIVE_PATH": os.path.join(isolated["deriveddata_cache_dir"], "Archives"),
@@ -55,6 +56,7 @@ class BuildEnvironmentAssembler:
             should_cancel=should_cancel,
         )
         env["LOCAL_DIR"] = prepared.repo_dir
+        env["IOS_FLUTTER_SDK_CHANGED"] = "true" if prepared.flutter_version_changed else "false"
         job.mark_stage_completed("repository_synced", f"Repository synchronized for {job.branch_name}")
         resolved_flutter_version = prepared.flutter_version
         if resolved_flutter_version:
@@ -134,3 +136,6 @@ class BuildEnvironmentAssembler:
         if job.platform in {"ios", "all"} and job.trigger_source in {"shorebird", "shorebird_manual"}:
             return "false"
         return "true"
+
+    def _resolve_ios_run_pod_install(self) -> str:
+        return os.environ.get("IOS_RUN_POD_INSTALL", "auto")
