@@ -206,15 +206,15 @@ class BuildOrchestrator:
             return False
         commands = []
         if job.platform in {"all", "android"}:
-            commands.append(("android", self._build_command("action/1_android.sh"), runtime.build_env()))
+            commands.append(("android", self._build_command("action/1_android.sh")))
         if job.platform in {"all", "ios"}:
-            commands.append(("ios", self._build_command("action/1_ios.sh"), runtime.build_env()))
+            commands.append(("ios", self._build_command("action/1_ios.sh")))
         if not commands:
             self._log(job, f"[{job.build_id}] ❌ No build processes started")
             return False
 
         processes = []
-        for platform_name, command, command_env in commands:
+        for platform_name, command in commands:
             try:
                 preflight_stage = f"{platform_name}_preflight"
                 toolchain_stage = f"{platform_name}_toolchain_ready"
@@ -258,6 +258,7 @@ class BuildOrchestrator:
                 return False
             job.mark_stage_running(build_stage, f"{platform_name.title()} build started")
             self._log(job, f"[{job.build_id}] Starting {platform_name} build...")
+            command_env = runtime.build_env()
             process = self.command_runner.start(command, env=command_env, cwd=os.getcwd())
             job.processes[platform_name] = process
             processes.append((platform_name, process))
