@@ -275,6 +275,11 @@ class PlatformToolchainPreparer:
                 bundler_version=bundler_version,
                 should_cancel=should_cancel,
             )
+            if context.is_shorebird_patch():
+                self.ruby_toolchain.ensure_gem(
+                    "fastlane", context.env.get("FASTLANE_VERSION"), ios_dir, context.env, build_id, log, should_cancel=should_cancel
+                )
+                self.ruby_toolchain.install_fastlane_plugins(ios_dir, context.env, build_id, log, should_cancel=should_cancel)
             return
 
         self.ruby_toolchain.ensure_gem(

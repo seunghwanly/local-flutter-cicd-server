@@ -32,35 +32,11 @@ class BuildRequest(BaseModel):
         description="branch name 설정 (e.g. develop, feature/update-version)",
         example="develop"
     )
-    flutter_sdk_version: Optional[str] = Field(
-        default=None, 
-        description="flutter sdk version 설정 (e.g. 3.35.4, stable). 제공되지 않으면 저장소의 .fvmrc 파일 사용",
-        example="3.35.4"
-    )
-    gradle_version: Optional[str] = Field(
-        default=None, 
-        description="gradle version 설정 (e.g. 8.10, 8.11). 제공되지 않으면 .env의 GRADLE_VERSION 사용",
-        example="8.10"
-    )
-    cocoapods_version: Optional[str] = Field(
-        default=None, 
-        description="cocoapods version 설정 (e.g. 1.15.2, 1.16.2). 제공되지 않으면 .env의 COCOAPODS_VERSION 사용",
-        example="1.15.2"
-    )
-    fastlane_version: Optional[str] = Field(
-        default=None, 
-        description="fastlane version 설정 (e.g. 2.228.0). 제공되지 않으면 .env의 FASTLANE_VERSION 사용",
-        example="2.228.0"
-    )
 
     @field_validator(
         "build_name",
         "build_number",
         "branch_name",
-        "flutter_sdk_version",
-        "gradle_version",
-        "cocoapods_version",
-        "fastlane_version",
         mode="before",
     )
     @classmethod
@@ -80,10 +56,6 @@ class BuildRequest(BaseModel):
                 "build_name": "2.1.1",
                 "build_number": "623",
                 "branch_name": "develop",
-                "flutter_sdk_version": "3.35.4",
-                "gradle_version": "8.10",
-                "cocoapods_version": "1.15.2",
-                "fastlane_version": "2.228.0"
             }
         }
     )

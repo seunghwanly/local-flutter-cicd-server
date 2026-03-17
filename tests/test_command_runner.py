@@ -3,7 +3,7 @@ from __future__ import annotations
 import tempfile
 import unittest
 
-from src.infrastructure.command_runner import CommandRunner
+from src.internal.infrastructure.command_runner import CommandRunner
 
 
 class CommandRunnerTests(unittest.TestCase):

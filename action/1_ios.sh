@@ -62,6 +62,16 @@ PATCH_MODE=false
 if [[ "$FASTLANE_LANE" == patch_* ]]; then
     PATCH_MODE=true
 fi
+IOS_USE_BUNDLER="${IOS_USE_BUNDLER:-}"
+if [ -z "$IOS_USE_BUNDLER" ]; then
+    if [ "$PATCH_MODE" = true ]; then
+        IOS_USE_BUNDLER=false
+    elif [ "$USE_BUNDLER" = true ]; then
+        IOS_USE_BUNDLER=true
+    else
+        IOS_USE_BUNDLER=false
+    fi
+fi
 
 # # Flutter 아티팩트 준비
 # echo "📦 Ensuring flutter artifacts..."
@@ -99,7 +109,7 @@ echo "📦 CocoaPods version:"
 if [ -n "$COCOAPODS_VERSION" ]; then
     echo "📦 Executing CocoaPods via: pod _${COCOAPODS_VERSION}_"
     pod "_${COCOAPODS_VERSION}_" --version
-elif [ "$USE_BUNDLER" = true ]; then
+elif [ "$IOS_USE_BUNDLER" = true ]; then
     echo "📦 Executing CocoaPods via: bundle exec pod"
     bundle exec pod --version
 else
@@ -116,7 +126,7 @@ if [ -n "$COCOAPODS_VERSION" ]; then
         echo "⚠️ pod install failed, retrying with --repo-update"
         pod "_${COCOAPODS_VERSION}_" install --repo-update
     fi
-elif [ "$USE_BUNDLER" = true ]; then
+elif [ "$IOS_USE_BUNDLER" = true ]; then
     if bundle exec pod install; then
         true
     else
@@ -145,7 +155,7 @@ fi
 # fi
 
 # Fastlane 명령 구성
-if [ "$USE_BUNDLER" = true ]; then
+if [ "$IOS_USE_BUNDLER" = true ]; then
     FASTLANE_CMD=(bundle exec fastlane "$FASTLANE_LANE")
 else
     FASTLANE_CMD=(fvm exec fastlane "$FASTLANE_LANE")
@@ -187,6 +197,7 @@ export GYM_XCARCHIVE_PATH="$DERIVED_DATA_PATH/Archives"
 
 # Fastlane 실행
 echo "🚀 Running: ${FASTLANE_CMD[*]}"
+echo "📦 Using Bundler for Ruby tools: $IOS_USE_BUNDLER"
 echo "🏗️ Using DerivedData path: $DERIVED_DATA_PATH"
 echo "🏗️ GYM_DERIVED_DATA_PATH: $GYM_DERIVED_DATA_PATH"
 echo "🏗️ GYM_XCARCHIVE_PATH: $GYM_XCARCHIVE_PATH"

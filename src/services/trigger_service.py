@@ -8,19 +8,19 @@ import os
 import re
 from typing import Any, Dict, Optional
 
-from ..application import WebhookPolicy
-from .build_service import build_service
+from ..internal.application import WebhookPolicy
+from ..models import BuildPipelineRequestDto
+from .build_pipeline_service import BuildService, build_service
 
 
 class HmacVerifier:
     """Verify signed action payloads using provider-specific secrets."""
 
-    def __init__(self, secret_env_var: str) -> None:
-        self.secret_env_var = secret_env_var
+    def __init__(self, secret: Optional[str]) -> None:
+        self.secret = secret
 
     def verify(self, payload: bytes, signature: Optional[str], algorithms: tuple[str, ...] = ("sha256",)) -> bool:
-        secret = os.environ.get(self.secret_env_var)
-        if not secret or not signature or "=" not in signature:
+        if not self.secret or not signature or "=" not in signature:
             return False
 
         algorithm, signature_hash = signature.split("=", 1)
@@ -31,16 +31,21 @@ class HmacVerifier:
         if digest is None:
             return False
 
-        mac = hmac.new(secret.encode(), msg=payload, digestmod=digest)
+        mac = hmac.new(self.secret.encode(), msg=payload, digestmod=digest)
         return hmac.compare_digest(mac.hexdigest(), signature_hash)
 
 
 class GitHubActionService:
     """Translate GitHub webhook events into build triggers."""
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        build_service: BuildService | None = None,
+        webhook_secret: Optional[str] = None,
+    ) -> None:
         self.policy = WebhookPolicy()
-        self.verifier = HmacVerifier("GITHUB_WEBHOOK_SECRET")
+        self.build_service = build_service or globals()["build_service"]
+        self.verifier = HmacVerifier(webhook_secret or os.environ.get("GITHUB_WEBHOOK_SECRET"))
 
     def verify_signature(
         self,
@@ -59,11 +64,13 @@ class GitHubActionService:
         if not trigger:
             return {"status": "ignored"}
 
-        build_id = build_service.start_build_pipeline(
-            trigger.flavor,
-            trigger.platform,
-            trigger_source="github",
-            trigger_event_id=delivery_id,
+        build_id = self.build_service.start_build_pipeline(
+            BuildPipelineRequestDto(
+                flavor=trigger.flavor,
+                platform=trigger.platform,
+                trigger_source="github",
+                trigger_event_id=delivery_id,
+            )
         )
         return {"status": "ok", "build_id": build_id}
 
@@ -81,9 +88,21 @@ class ShorebirdActionService:
         "production": "prod",
     }
 
-    def __init__(self) -> None:
-        self.verifier = HmacVerifier("GITHUB_WEBHOOK_SECRET")
-        self.prod_tag_pattern = os.environ.get("WEBHOOK_PROD_TAG_PATTERN", r"^\d+\.\d+\.\d+$")
+    def __init__(
+        self,
+        build_service: BuildService | None = None,
+        webhook_secret: Optional[str] = None,
+        prod_tag_pattern: Optional[str] = None,
+        default_flavor: str = "prod",
+        default_platform: str = "ios",
+        default_branch_name: Optional[str] = None,
+    ) -> None:
+        self.build_service = build_service or globals()["build_service"]
+        self.verifier = HmacVerifier(webhook_secret or os.environ.get("GITHUB_WEBHOOK_SECRET"))
+        self.prod_tag_pattern = prod_tag_pattern or os.environ.get("WEBHOOK_PROD_TAG_PATTERN", r"^\d+\.\d+\.\d+$")
+        self.default_flavor = default_flavor or os.environ.get("SHOREBIRD_PATCH_FLAVOR", "prod")
+        self.default_platform = default_platform or os.environ.get("SHOREBIRD_PATCH_PLATFORM", "ios")
+        self.default_branch_name = default_branch_name or os.environ.get("SHOREBIRD_PATCH_BRANCH_NAME")
 
     def verify_signature(
         self,
@@ -105,14 +124,16 @@ class ShorebirdActionService:
         build_name = self._extract_webhook_value(payload, "build_name")
         build_number = self._extract_webhook_value(payload, "build_number")
 
-        build_id = build_service.start_build_pipeline(
-            flavor=flavor,
-            platform=os.environ.get("SHOREBIRD_PATCH_PLATFORM", "ios"),
-            trigger_source="shorebird",
-            trigger_event_id=delivery_id or event_type,
-            build_name=build_name or self._payload_value(payload, "ref"),
-            build_number=build_number,
-            branch_name=os.environ.get("SHOREBIRD_PATCH_BRANCH_NAME"),
+        build_id = self.build_service.start_build_pipeline(
+            BuildPipelineRequestDto(
+                flavor=flavor,
+                platform=self.default_platform,
+                trigger_source="shorebird",
+                trigger_event_id=delivery_id or event_type,
+                build_name=build_name or self._payload_value(payload, "ref"),
+                build_number=build_number,
+                branch_name=self.default_branch_name,
+            )
         )
         return {"status": "ok", "build_id": build_id}
 
@@ -139,13 +160,13 @@ class ShorebirdActionService:
     def _resolve_flavor(self, payload: Dict[str, Any]) -> str:
         requested_flavor = self._extract_webhook_value(payload, "flavor")
         if requested_flavor is None:
-            return os.environ.get("SHOREBIRD_PATCH_FLAVOR", "prod")
+            return self.default_flavor
 
         normalized = self.FLAVOR_ALIASES.get(requested_flavor.strip().lower())
         if normalized is not None:
             return normalized
 
-        return os.environ.get("SHOREBIRD_PATCH_FLAVOR", "prod")
+        return self.default_flavor
 
     def _is_supported_tag_event(self, payload: Dict[str, Any], event_type: Optional[str]) -> bool:
         if event_type != "create":
