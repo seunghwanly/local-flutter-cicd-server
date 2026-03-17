@@ -137,7 +137,7 @@ class IOSKeychainPreparer:
                     "continuing with existing user session state"
                 )
         elif is_login_keychain:
-            log(f"[{build_id}] ℹ️ KEYCHAIN_PASSWORD not set for login keychain; using existing user session state")
+                log(f"[{build_id}] ℹ️ KEYCHAIN_PASSWORD not set for login keychain; using existing user session state")
         else:
             raise RuntimeError("KEYCHAIN_PASSWORD is required when KEYCHAIN_NAME points to a custom keychain")
 
@@ -152,7 +152,6 @@ class IOSKeychainPreparer:
             if not is_login_keychain:
                 raise RuntimeError(f"Failed to configure keychain settings for '{keychain_name}': {exc}") from exc
             log(f"[{build_id}] ⚠️ login keychain settings update failed; continuing with existing settings")
-
         self.command_runner.run_checked(
             ["security", "default-keychain", "-d", "user", "-s", keychain_str],
             env=context.env,
@@ -199,7 +198,6 @@ class IOSKeychainPreparer:
     def _is_login_keychain(self, keychain_path: Path) -> bool:
         name = keychain_path.name
         return name in {"login.keychain", "login.keychain-db"}
-
 
 class PlatformToolchainPreparer:
     """Prepare per-platform Ruby and native build toolchains."""
