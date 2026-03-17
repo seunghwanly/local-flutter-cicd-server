@@ -153,6 +153,59 @@ class SetupExecutorTests(unittest.TestCase):
         self.assertEqual("/tmp/gems/ruby-3.2.0", context.env["GEM_HOME"])
         self.assertEqual("/tmp/gems/ruby-3.2.0/bundle", context.env["BUNDLE_PATH"])
 
+    def test_prepare_ios_toolchain_prepares_standalone_fastlane_for_shorebird_patch(self) -> None:
+        runner = FakeCommandRunner()
+        executor = SetupExecutor(runner)
+
+        runner.add_response(["rbenv", "versions", "--bare"], stdout="3.2.0\n")
+        runner.add_response(["ruby", "-e", "print RUBY_VERSION"], stdout="3.2.0")
+        runner.add_response(["gem", "list", "-i", "cocoapods", "-v", "1.16.2"], returncode=0)
+        runner.add_response(["gem", "list", "-i", "bundler", "-v", "2.7.2"], returncode=0)
+        runner.add_response(["bundle", "_2.7.2_", "config", "set", "--local", "path", "/tmp/gems/ruby-3.2.0/bundle"])
+        runner.add_response(["bundle", "_2.7.2_", "install"], stdout="bundle ok")
+        runner.add_response(["gem", "list", "-i", "fastlane"], returncode=0)
+        runner.add_response(["gem", "list", "-i", "fastlane-plugin-shorebird"], returncode=0)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_dir = Path(tmp) / "repo"
+            ios_dir = repo_dir / "ios"
+            fastlane_dir = ios_dir / "fastlane"
+            fastlane_dir.mkdir(parents=True)
+            (ios_dir / "Gemfile").write_text("source 'https://rubygems.org'\n", encoding="utf-8")
+            (ios_dir / "Gemfile.lock").write_text(
+                "GEM\n"
+                "  specs:\n"
+                "\n"
+                "RUBY VERSION\n"
+                "   ruby 3.2.0p0\n"
+                "\n"
+                "BUNDLED WITH\n"
+                "   2.7.2\n",
+                encoding="utf-8",
+            )
+            (fastlane_dir / "Pluginfile").write_text(
+                "gem 'fastlane-plugin-shorebird'\n",
+                encoding="utf-8",
+            )
+
+            context = BuildRuntimeContext(
+                env={"GEM_HOME": "/tmp/gems", "COCOAPODS_VERSION": "1.16.2"},
+                repo_dir=str(repo_dir),
+                workspace=tmp,
+                trigger_source="shorebird_manual",
+            )
+
+            executor.prepare_platform_toolchain(
+                build_id="build-ios-shorebird",
+                platform="ios",
+                context=context,
+                log=lambda _: None,
+            )
+
+        self.assertIn(("bundle", "_2.7.2_", "install"), runner.calls)
+        self.assertIn(("gem", "list", "-i", "fastlane"), runner.calls)
+        self.assertIn(("gem", "list", "-i", "fastlane-plugin-shorebird"), runner.calls)
+
     def test_prepare_android_toolchain_uses_ruby_version_fallback(self) -> None:
         runner = FakeCommandRunner()
         executor = SetupExecutor(runner)

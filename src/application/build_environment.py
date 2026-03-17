@@ -35,6 +35,7 @@ class BuildEnvironmentAssembler:
                 "FLAVOR": job.flavor,
                 "TRIGGER_SOURCE": job.trigger_source,
                 "FASTLANE_LANE": fastlane_lane,
+                "IOS_USE_BUNDLER": self._resolve_ios_use_bundler(job),
                 "DATADOG_API_KEY": os.environ.get("DATADOG_API_KEY", ""),
                 "GYM_DERIVED_DATA_PATH": isolated["deriveddata_cache_dir"],
                 "GYM_XCARCHIVE_PATH": os.path.join(isolated["deriveddata_cache_dir"], "Archives"),
@@ -128,3 +129,8 @@ class BuildEnvironmentAssembler:
         if job.trigger_source in {"shorebird", "shorebird_manual"}:
             return os.environ.get(f"SHOREBIRD_{job.flavor.upper()}_FASTLANE_LANE", f"patch_{job.flavor}")
         return os.environ.get(f"{job.flavor.upper()}_FASTLANE_LANE", "beta")
+
+    def _resolve_ios_use_bundler(self, job: BuildJob) -> str:
+        if job.platform in {"ios", "all"} and job.trigger_source in {"shorebird", "shorebird_manual"}:
+            return "false"
+        return "true"

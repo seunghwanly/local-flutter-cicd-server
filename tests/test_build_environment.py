@@ -75,6 +75,7 @@ class BuildEnvironmentAssemblerTests(unittest.TestCase):
                 )
 
         self.assertEqual("patch_prod", runtime.env["FASTLANE_LANE"])
+        self.assertEqual("false", runtime.env["IOS_USE_BUNDLER"])
         self.assertEqual("shorebird_manual", runtime.env["TRIGGER_SOURCE"])
         self.assertTrue(any("Shorebird patch config" in line for line in logs))
         self.assertEqual("release/2.2.1-hotfix", repo_manager.calls[0]["branch_name"])
@@ -121,6 +122,7 @@ class BuildEnvironmentAssemblerTests(unittest.TestCase):
             )
 
         self.assertEqual("custom_patch_stage", runtime.env["FASTLANE_LANE"])
+        self.assertEqual("false", runtime.env["IOS_USE_BUNDLER"])
 
     def test_regular_build_uses_flavor_lane(self) -> None:
         repo_manager = StubRepositoryWorkspaceManager()
@@ -160,6 +162,7 @@ class BuildEnvironmentAssemblerTests(unittest.TestCase):
             )
 
         self.assertEqual("deploy_stage", runtime.env["FASTLANE_LANE"])
+        self.assertEqual("true", runtime.env["IOS_USE_BUNDLER"])
         self.assertEqual("manual", runtime.env["TRIGGER_SOURCE"])
         self.assertNotIn("SHOREBIRD_RELEASE_VERSION", runtime.env)
 
