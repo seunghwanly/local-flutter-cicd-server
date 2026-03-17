@@ -56,7 +56,8 @@ class BuildEnvironmentAssembler:
             should_cancel=should_cancel,
         )
         env["LOCAL_DIR"] = prepared.repo_dir
-        env["IOS_FLUTTER_SDK_CHANGED"] = "true" if prepared.flutter_version_changed else "false"
+        # Force pod install auto-detection when iOS precache had to repair SDK state.
+        env["IOS_FLUTTER_SDK_CHANGED"] = "true" if (prepared.flutter_version_changed or prepared.precache_ran) else "false"
         job.mark_stage_completed("repository_synced", f"Repository synchronized for {job.branch_name}")
         resolved_flutter_version = prepared.flutter_version
         if resolved_flutter_version:

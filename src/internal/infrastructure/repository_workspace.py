@@ -100,7 +100,12 @@ class RepositoryWorkspaceManager:
 
             precache_ran = False
             should_precache_ios = platform in {"all", "ios"}
-            if version_changed and should_precache_ios:
+            missing_ios_engine_artifacts = should_precache_ios and self._is_ios_engine_artifact_missing(
+                build_id,
+                repo_path,
+                log,
+            )
+            if should_precache_ios and (version_changed or missing_ios_engine_artifacts):
                 self._run_flutter_precache(
                     build_id,
                     repo_path,
@@ -108,6 +113,11 @@ class RepositoryWorkspaceManager:
                     resolved_version,
                     platform,
                     log,
+                    reason=self._build_precache_reason(
+                        version_changed=version_changed,
+                        missing_ios_engine_artifacts=missing_ios_engine_artifacts,
+                        repo_path=repo_path,
+                    ),
                     should_cancel=should_cancel,
                 )
                 precache_ran = True
@@ -283,11 +293,12 @@ class RepositoryWorkspaceManager:
         flutter_version: str,
         platform: str,
         log,
+        reason: str,
         should_cancel=None,
     ) -> None:
         log(
-            f"[{build_id}] 🔄 Flutter SDK changed, running required precache for iOS "
-            f"({flutter_version}, platform={platform})"
+            f"[{build_id}] 🔄 Running required Flutter iOS precache "
+            f"({flutter_version}, platform={platform}, reason={reason})"
         )
         try:
             result = self.command_runner.run_checked(
@@ -304,6 +315,31 @@ class RepositoryWorkspaceManager:
         for line in result.stdout.splitlines():
             if line.strip():
                 log(f"[{build_id}][PRECACHE] {line.strip()}")
+
+    def _is_ios_engine_artifact_missing(self, build_id: str, repo_path: Path, log) -> bool:
+        artifact_path = self._ios_engine_artifact_path(repo_path)
+        if artifact_path.exists():
+            return False
+
+        log(f"[{build_id}] ⚠️ Missing Flutter iOS engine artifact: {artifact_path}")
+        return True
+
+    def _ios_engine_artifact_path(self, repo_path: Path) -> Path:
+        return repo_path / ".fvm" / "flutter_sdk" / "bin" / "cache" / "artifacts" / "engine" / "ios" / "Flutter.xcframework"
+
+    def _build_precache_reason(
+        self,
+        *,
+        version_changed: bool,
+        missing_ios_engine_artifacts: bool,
+        repo_path: Path,
+    ) -> str:
+        reasons: list[str] = []
+        if version_changed:
+            reasons.append("flutter_sdk_version_changed")
+        if missing_ios_engine_artifacts:
+            reasons.append(f"missing_ios_engine_artifact:{self._ios_engine_artifact_path(repo_path)}")
+        return ",".join(reasons) if reasons else "unknown"
 
     def _metadata_file(self, repo_url: str, branch_name: str) -> Path:
         shared_dir = get_shared_cache_dir() / "repo_state"

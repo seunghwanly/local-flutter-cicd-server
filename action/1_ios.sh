@@ -81,6 +81,26 @@ mark_pod_install_required() {
     POD_INSTALL_REASONS+=("$1")
 }
 
+ensure_flutter_ios_artifacts() {
+    local project_root
+    local artifact_path
+
+    project_root="$(cd .. && pwd)"
+    artifact_path="$project_root/.fvm/flutter_sdk/bin/cache/artifacts/engine/ios/Flutter.xcframework"
+
+    if [ -d "$artifact_path" ]; then
+        return
+    fi
+
+    echo "⚠️ Missing Flutter iOS engine artifact: $artifact_path"
+    echo "📦 Running fvm flutter precache --ios before pod install"
+    (
+        cd "$project_root"
+        fvm flutter precache --ios
+    )
+    mark_pod_install_required "Flutter iOS engine artifact was repaired via precache"
+}
+
 resolve_pod_state_file() {
     if [ -f "Pods/Manifest.lock" ]; then
         echo "Pods/Manifest.lock"
@@ -183,6 +203,8 @@ else
     echo "📦 Executing CocoaPods via: pod"
     pod --version
 fi
+
+ensure_flutter_ios_artifacts
 
 # pod install 실행
 if [ "$SHOULD_RUN_POD_INSTALL" = true ]; then

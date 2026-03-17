@@ -51,7 +51,17 @@ class CapturingRepositoryWorkspaceManager(RepositoryWorkspaceManager):
     def _run_fvm_use(self, build_id, repo_path, env, flutter_version, log, should_cancel=None) -> None:
         self.calls.append(("fvm_use", flutter_version))
 
-    def _run_flutter_precache(self, build_id, repo_path, env, flutter_version, platform, log, should_cancel=None) -> None:
+    def _run_flutter_precache(
+        self,
+        build_id,
+        repo_path,
+        env,
+        flutter_version,
+        platform,
+        log,
+        reason,
+        should_cancel=None,
+    ) -> None:
         self.calls.append(("precache", f"{flutter_version}:{platform}"))
 
     def _read_previous_flutter_version(self, repo_url: str, branch_name: str) -> str | None:
@@ -108,6 +118,60 @@ class RepositoryWorkspaceManagerTests(unittest.TestCase):
         self.assertIn(("fvm_use", "3.24.0"), manager.calls)
         self.assertIn(("precache", "3.24.0:ios"), manager.calls)
         self.assertEqual("3.24.0", manager.written_version)
+
+    def test_prepare_runs_precache_when_ios_engine_artifact_is_missing(self) -> None:
+        manager = CapturingRepositoryWorkspaceManager()
+        manager.previous_version = "3.24.0"
+        logs: list[str] = []
+
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_dir = Path(tmp) / "repo"
+            repo_dir.mkdir()
+            (repo_dir / ".fvmrc").write_text('{"flutter":"3.24.0"}', encoding="utf-8")
+            manager.next_repo_dir = repo_dir
+
+            prepared = manager.prepare(
+                build_id="build-missing-ios-artifact",
+                repo_url="git@github.com:org/repo.git",
+                branch_name="develop",
+                repo_dir=str(repo_dir),
+                env={},
+                requested_flutter_version=None,
+                platform="ios",
+                log=logs.append,
+            )
+
+        self.assertEqual("3.24.0", prepared.flutter_version)
+        self.assertTrue(prepared.precache_ran)
+        self.assertFalse(prepared.flutter_version_changed)
+        self.assertIn(("precache", "3.24.0:ios"), manager.calls)
+        self.assertTrue(any("Missing Flutter iOS engine artifact" in line for line in logs))
+
+    def test_prepare_skips_precache_when_ios_engine_artifact_exists(self) -> None:
+        manager = CapturingRepositoryWorkspaceManager()
+        manager.previous_version = "3.24.0"
+
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_dir = Path(tmp) / "repo"
+            artifact_dir = repo_dir / ".fvm" / "flutter_sdk" / "bin" / "cache" / "artifacts" / "engine" / "ios" / "Flutter.xcframework"
+            artifact_dir.mkdir(parents=True)
+            (repo_dir / ".fvmrc").write_text('{"flutter":"3.24.0"}', encoding="utf-8")
+            manager.next_repo_dir = repo_dir
+
+            prepared = manager.prepare(
+                build_id="build-ios-artifact-present",
+                repo_url="git@github.com:org/repo.git",
+                branch_name="develop",
+                repo_dir=str(repo_dir),
+                env={},
+                requested_flutter_version=None,
+                platform="ios",
+                log=lambda _: None,
+            )
+
+        self.assertEqual("3.24.0", prepared.flutter_version)
+        self.assertFalse(prepared.precache_ran)
+        self.assertNotIn(("precache", "3.24.0:ios"), manager.calls)
 
     def test_prepare_skips_ios_precache_for_android_only_build(self) -> None:
         manager = CapturingRepositoryWorkspaceManager()
