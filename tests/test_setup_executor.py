@@ -112,7 +112,7 @@ class SetupExecutorTests(unittest.TestCase):
         runner.add_response(["ruby", "-e", "print RUBY_VERSION"], stdout="3.2.0")
         runner.add_response(["gem", "list", "-i", "cocoapods", "-v", "1.16.2"], returncode=0)
         runner.add_response(["gem", "list", "-i", "bundler", "-v", "2.7.2"], returncode=0)
-        runner.add_response(["bundle", "_2.7.2_", "config", "set", "--local", "path", "/tmp/gems/bundle"])
+        runner.add_response(["bundle", "_2.7.2_", "config", "set", "--local", "path", "/tmp/gems/ruby-3.2.0/bundle"])
         runner.add_response(["bundle", "_2.7.2_", "install"], stdout="bundle ok")
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -132,22 +132,26 @@ class SetupExecutorTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
+            context = BuildRuntimeContext(
+                env={"GEM_HOME": "/tmp/gems", "COCOAPODS_VERSION": "1.16.2"},
+                repo_dir=str(repo_dir),
+                workspace=tmp,
+            )
+
             executor.prepare_platform_toolchain(
                 build_id="build-ios",
                 platform="ios",
-                context=BuildRuntimeContext(
-                    env={"GEM_HOME": "/tmp/gems", "COCOAPODS_VERSION": "1.16.2"},
-                    repo_dir=str(repo_dir),
-                    workspace=tmp,
-                ),
+                context=context,
                 log=logs.append,
             )
 
         self.assertIn(("gem", "list", "-i", "cocoapods", "-v", "1.16.2"), runner.calls)
         self.assertIn(("gem", "list", "-i", "bundler", "-v", "2.7.2"), runner.calls)
-        self.assertIn(("bundle", "_2.7.2_", "config", "set", "--local", "path", "/tmp/gems/bundle"), runner.calls)
+        self.assertIn(("bundle", "_2.7.2_", "config", "set", "--local", "path", "/tmp/gems/ruby-3.2.0/bundle"), runner.calls)
         self.assertIn(("bundle", "_2.7.2_", "install"), runner.calls)
         self.assertTrue(any("Installing Ruby bundle" in line for line in logs))
+        self.assertEqual("/tmp/gems/ruby-3.2.0", context.env["GEM_HOME"])
+        self.assertEqual("/tmp/gems/ruby-3.2.0/bundle", context.env["BUNDLE_PATH"])
 
     def test_prepare_android_toolchain_uses_ruby_version_fallback(self) -> None:
         runner = FakeCommandRunner()
@@ -157,7 +161,7 @@ class SetupExecutorTests(unittest.TestCase):
         runner.add_response(["rbenv", "versions", "--bare"], stdout="3.1.0\n3.3.9\n")
         runner.add_response(["ruby", "-e", "print RUBY_VERSION"], stdout="3.3.9")
         runner.add_response(["gem", "list", "-i", "bundler", "-v", "2.7.2"], returncode=0)
-        runner.add_response(["bundle", "_2.7.2_", "config", "set", "--local", "path", "/tmp/gems/bundle"])
+        runner.add_response(["bundle", "_2.7.2_", "config", "set", "--local", "path", "/tmp/gems/ruby-3.3.9/bundle"])
         runner.add_response(["bundle", "_2.7.2_", "install"], stdout="bundle ok")
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -174,19 +178,73 @@ class SetupExecutorTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
+            context = BuildRuntimeContext(
+                env={"GEM_HOME": "/tmp/gems", "RUBY_VERSION": "3.2.0"},
+                repo_dir=str(repo_dir),
+                workspace=tmp,
+            )
+
             executor.prepare_platform_toolchain(
                 build_id="build-android",
                 platform="android",
-                context=BuildRuntimeContext(
-                    env={"GEM_HOME": "/tmp/gems", "RUBY_VERSION": "3.2.0"},
-                    repo_dir=str(repo_dir),
-                    workspace=tmp,
-                ),
+                context=context,
                 log=logs.append,
             )
 
         self.assertIn(("bundle", "_2.7.2_", "install"), runner.calls)
         self.assertTrue(any("Using compatible installed Ruby 3.3.9 for RUBY_VERSION requirement 3.2.0+" in line for line in logs))
+        self.assertEqual("/tmp/gems/ruby-3.3.9", context.env["GEM_HOME"])
+        self.assertEqual("/tmp/gems/ruby-3.3.9/bundle", context.env["BUNDLE_PATH"])
+
+    def test_prepare_ios_toolchain_unlocks_configured_keychain(self) -> None:
+        runner = FakeCommandRunner()
+        executor = SetupExecutor(runner)
+        logs: list[str] = []
+
+        with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as home:
+            keychain_dir = Path(home) / "Library" / "Keychains"
+            keychain_dir.mkdir(parents=True, exist_ok=True)
+            keychain_path = keychain_dir / "login.keychain-db"
+            keychain_path.write_text("", encoding="utf-8")
+
+            runner.add_response(["security", "list-keychains", "-d", "user"], stdout="    \"/tmp/other.keychain-db\"\n")
+            runner.add_response(
+                ["security", "list-keychains", "-d", "user", "-s", "/tmp/other.keychain-db", str(keychain_path.resolve())]
+            )
+            runner.add_response(["security", "unlock-keychain", "-p", "secret", str(keychain_path.resolve())])
+            runner.add_response(["security", "set-keychain-settings", "-lut", "21600", str(keychain_path.resolve())])
+            runner.add_response(["security", "default-keychain", "-d", "user", "-s", str(keychain_path.resolve())])
+            runner.add_response(["rbenv", "versions", "--bare"], stdout="3.2.0\n")
+            runner.add_response(["ruby", "-e", "print RUBY_VERSION"], stdout="3.2.0")
+            runner.add_response(["gem", "list", "-i", "cocoapods"], returncode=0)
+            runner.add_response(["gem", "list", "-i", "fastlane"], returncode=0)
+
+            repo_dir = Path(tmp) / "repo"
+            ios_dir = repo_dir / "ios"
+            ios_dir.mkdir(parents=True)
+            context = BuildRuntimeContext(
+                env={
+                    "GEM_HOME": "/tmp/gems",
+                    "KEYCHAIN_NAME": "login.keychain",
+                    "KEYCHAIN_PASSWORD": "secret",
+                },
+                repo_dir=str(repo_dir),
+                workspace=tmp,
+            )
+
+            with patch("pathlib.Path.home", return_value=Path(home)):
+                executor.prepare_platform_toolchain(
+                    build_id="build-keychain",
+                    platform="ios",
+                    context=context,
+                    log=logs.append,
+                )
+
+        self.assertIn(("security", "unlock-keychain", "-p", "secret", str(keychain_path.resolve())), runner.calls)
+        self.assertIn(("security", "default-keychain", "-d", "user", "-s", str(keychain_path.resolve())), runner.calls)
+        self.assertEqual(str(keychain_path.resolve()), context.env["MATCH_KEYCHAIN_NAME"])
+        self.assertEqual("secret", context.env["MATCH_KEYCHAIN_PASSWORD"])
+        self.assertTrue(any("Prepared keychain" in line for line in logs))
 
     def test_prepare_android_toolchain_fails_when_lockfile_requires_newer_ruby(self) -> None:
         runner = FakeCommandRunner()

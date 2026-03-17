@@ -41,6 +41,8 @@ export FLUTTER_BUILD_DERIVED_DATA_PATH="$DERIVED_DATA_PATH"
 # PATH에 GEM_HOME/bin 추가 (독립 gem 사용)
 export PATH="$GEM_HOME/bin:$PATH"
 export GEM_PATH="$GEM_HOME"
+export BUNDLE_PATH="${BUNDLE_PATH:-$GEM_HOME/bundle}"
+export BUNDLE_DISABLE_SHARED_GEMS="${BUNDLE_DISABLE_SHARED_GEMS:-true}"
 
 USE_BUNDLER=false
 if [ -f "Gemfile" ]; then
@@ -48,6 +50,7 @@ if [ -f "Gemfile" ]; then
 fi
 
 echo "  ✅ 독립 환경 설정 완료"
+echo "  📍 BUNDLE_PATH: $BUNDLE_PATH"
 echo ""
 
 # Fastlane 레인 결정
