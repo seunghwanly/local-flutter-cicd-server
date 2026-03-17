@@ -81,12 +81,25 @@ mark_pod_install_required() {
     POD_INSTALL_REASONS+=("$1")
 }
 
+resolve_pod_state_file() {
+    if [ -f "Pods/Manifest.lock" ]; then
+        echo "Pods/Manifest.lock"
+    elif [ -f "Podfile.lock" ]; then
+        echo "Podfile.lock"
+    else
+        echo ""
+    fi
+}
+
 evaluate_auto_pod_install() {
+    local pod_state_file
+    pod_state_file="$(resolve_pod_state_file)"
+
     if [ ! -f "Podfile.lock" ]; then
         mark_pod_install_required "Podfile.lock missing"
     fi
-    if [ ! -f "Pods/Manifest.lock" ]; then
-        mark_pod_install_required "Pods/Manifest.lock missing"
+    if [ ! -d "Pods/Pods.xcodeproj" ]; then
+        mark_pod_install_required "Pods/Pods.xcodeproj missing"
     fi
     if [ ! -d "Runner.xcworkspace" ]; then
         mark_pod_install_required "Runner.xcworkspace missing"
@@ -97,11 +110,15 @@ evaluate_auto_pod_install() {
     if [ -f "Podfile.lock" ] && [ -f "Pods/Manifest.lock" ] && ! cmp -s "Podfile.lock" "Pods/Manifest.lock"; then
         mark_pod_install_required "Podfile.lock and Pods/Manifest.lock differ"
     fi
-    if [ -f "Podfile" ] && [ -f "Pods/Manifest.lock" ] && [ "Podfile" -nt "Pods/Manifest.lock" ]; then
-        mark_pod_install_required "Podfile is newer than Pods/Manifest.lock"
+    if [ -n "$pod_state_file" ] && [ -f "Podfile" ] && [ "Podfile" -nt "$pod_state_file" ]; then
+        mark_pod_install_required "Podfile is newer than $pod_state_file"
     fi
-    if [ -f "../.flutter-plugins-dependencies" ] && { [ ! -f "Pods/Manifest.lock" ] || [ "../.flutter-plugins-dependencies" -nt "Pods/Manifest.lock" ]; }; then
-        mark_pod_install_required ".flutter-plugins-dependencies is newer than Pods/Manifest.lock"
+    if [ -f "../.flutter-plugins-dependencies" ] && { [ -z "$pod_state_file" ] || [ "../.flutter-plugins-dependencies" -nt "$pod_state_file" ]; }; then
+        if [ -n "$pod_state_file" ]; then
+            mark_pod_install_required ".flutter-plugins-dependencies is newer than $pod_state_file"
+        else
+            mark_pod_install_required ".flutter-plugins-dependencies changed without an existing pod state file"
+        fi
     fi
     if [ "${IOS_FLUTTER_SDK_CHANGED:-false}" = "true" ]; then
         mark_pod_install_required "Flutter SDK version changed since previous sync"
