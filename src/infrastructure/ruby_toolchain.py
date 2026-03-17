@@ -317,7 +317,6 @@ class RubyToolchainPreparer:
         path_entries = env.get("PATH", "").split(":") if env.get("PATH") else []
         if bin_path not in path_entries:
             env["PATH"] = ":".join([bin_path, *path_entries]) if path_entries else bin_path
-
     def _select_ruby_version(
         self,
         cwd: Path,
