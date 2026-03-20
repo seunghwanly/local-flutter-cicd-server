@@ -8,10 +8,12 @@ from pathlib import Path
 from typing import Optional
 
 from pydantic import Field
+from dotenv import dotenv_values
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DOTENV_FILES = (PROJECT_ROOT / ".env", PROJECT_ROOT / "src" / ".env")
 
 
 class AppSettings(BaseSettings):
@@ -39,7 +41,7 @@ class AppSettings(BaseSettings):
     )
 
     model_config = SettingsConfigDict(
-        env_file=(PROJECT_ROOT / ".env", PROJECT_ROOT / "src" / ".env"),
+        env_file=DOTENV_FILES,
         env_file_encoding="utf-8",
         extra="ignore",
     )
@@ -50,9 +52,22 @@ def get_settings() -> AppSettings:
     return AppSettings()
 
 
+def _load_raw_dotenv_into_environ() -> None:
+    """Expose all dotenv entries to os.environ for legacy code paths."""
+
+    for env_file in DOTENV_FILES:
+        if not env_file.exists():
+            continue
+        for key, value in dotenv_values(env_file).items():
+            if key is None or value is None:
+                continue
+            os.environ.setdefault(key, value)
+
+
 def bootstrap_environment(settings: AppSettings | None = None) -> AppSettings:
     """Load settings once and mirror them into os.environ for legacy internals."""
 
+    _load_raw_dotenv_into_environ()
     resolved = settings or get_settings()
     for field_name, field_info in resolved.__class__.model_fields.items():
         env_name = field_info.alias or field_name.upper()
@@ -61,4 +76,3 @@ def bootstrap_environment(settings: AppSettings | None = None) -> AppSettings:
             continue
         os.environ.setdefault(env_name, str(value))
     return resolved
-
