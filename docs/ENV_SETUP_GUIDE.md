@@ -11,7 +11,7 @@ cp env.template .env
 그 다음 `.env` 파일을 열어서 실제 값으로 수정하세요.
 
 **참고:** 
-- `local_run.sh`를 사용하면 `.env` 파일이 자동으로 로드됩니다.
+- `local_run.sh`는 서버 실행만 담당하고, 루트 `.env`는 앱 시작 시 자동으로 읽습니다.
 - 직접 서버를 실행할 경우 루트 `.env`도 자동으로 읽습니다: `./venv/bin/uvicorn src.main:app --reload`
 
 ### 방법 2: 직접 생성
@@ -144,7 +144,7 @@ DEV_FASTLANE_LANE=beta
 서버 시작 시 로그에서 환경변수가 제대로 로드되었는지 확인할 수 있습니다:
 
 ```bash
-uvicorn main:app --reload
+./venv/bin/uvicorn src.main:app --reload
 ```
 
 출력 예시:
@@ -198,7 +198,7 @@ INFO:     ✅ Server ready at http://localhost:8000
 python test_migration.py
 
 # 2. 서버 시작
-uvicorn main:app --reload
+./venv/bin/uvicorn src.main:app --reload
 
 # 3. 테스트 빌드
 curl -X POST "http://localhost:8000/build" \

@@ -161,7 +161,7 @@ python monitor.py dev-android-20250102-143022
 **다음 단계:**
 1. 의존성 설치: `pip install -r requirements.txt`
 2. 환경변수 설정 (`.env` 또는 시스템 환경변수)
-3. 서버 시작: `uvicorn main:app --reload`
+3. 서버 시작: `./venv/bin/uvicorn src.main:app --reload`
 4. 테스트 시나리오 실행
 
 ---
@@ -330,8 +330,7 @@ cp env.template .env
 sh local_run.sh
 
 # 방법 2: 직접 실행
-export $(cat .env | xargs)  # .env 파일 로드
-uvicorn main:app --reload
+./venv/bin/uvicorn src.main:app --reload
 ```
 
 ### 4. 첫 빌드 테스트
@@ -405,4 +404,3 @@ ls -la ~/ci-cd-workspace/builds/$BUILD_ID/pub_cache/global_packages/
 ---
 
 **최종 업데이트:** 2025-10-02 (마이그레이션 완료)
-
