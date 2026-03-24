@@ -11,7 +11,7 @@ Flutter CI/CD Server는 Flutter 애플리케이션의 빌드 파이프라인을 
 pip install -r requirements.txt
 
 # 서버 실행
-uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+./venv/bin/uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 ## API 문서 접근

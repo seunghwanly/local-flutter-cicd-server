@@ -102,13 +102,12 @@ python test_migration.py
 
 ### 4. 서버 시작
 ```bash
-# 방법 1: local_run.sh 사용 (권장 - .env 자동 로드)
+# 방법 1: local_run.sh 사용 (권장)
 sh local_run.sh
 
 # 방법 2: 직접 실행
 pip install -r requirements.txt
-export $(cat .env | xargs)  # .env 파일 로드
-uvicorn main:app --reload
+./venv/bin/uvicorn src.main:app --reload
 ```
 
 ### 5. 첫 빌드 테스트
@@ -297,4 +296,3 @@ python -c "from cleanup_scheduler import manual_cleanup; manual_cleanup(days=3)"
 **마이그레이션 완료일**: 2025-10-02  
 **담당**: AI Agent  
 **상태**: ✅ 완료
-
