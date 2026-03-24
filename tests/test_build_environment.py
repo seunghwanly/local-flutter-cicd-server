@@ -17,11 +17,16 @@ class StubRepositoryWorkspaceManager:
         self.calls = []
         self.flutter_version_changed = False
         self.precache_ran = False
+        self.create_ios_gemfile = True
 
     def prepare(self, **kwargs):
         self.calls.append(kwargs)
         repo_dir = Path(kwargs["repo_dir"])
         repo_dir.mkdir(parents=True, exist_ok=True)
+        ios_dir = repo_dir / "ios"
+        ios_dir.mkdir(parents=True, exist_ok=True)
+        if self.create_ios_gemfile:
+            (ios_dir / "Gemfile").write_text("source 'https://rubygems.org'\n", encoding="utf-8")
         return PreparedRepositoryResult(
             flutter_version="3.24.0",
             precache_ran=self.precache_ran,
@@ -258,6 +263,46 @@ class BuildEnvironmentAssemblerTests(unittest.TestCase):
             )
 
         self.assertEqual("true", runtime.env["IOS_FLUTTER_SDK_CHANGED"])
+
+    def test_regular_build_disables_bundler_when_ios_gemfile_is_missing(self) -> None:
+        repo_manager = StubRepositoryWorkspaceManager()
+        repo_manager.create_ios_gemfile = False
+        assembler = BuildEnvironmentAssembler(repo_manager)
+        request = BuildRequestData(
+            flavor="stage",
+            platform="ios",
+            trigger_source="manual",
+            branch_name="stage",
+        )
+        job = BuildJob.create("build-no-gemfile", request, request.branch_name or "stage", "queue-no-gemfile")
+
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(
+            os.environ,
+            {"STAGE_FASTLANE_LANE": "deploy_stage", "REPO_URL": "git@github.com:org/app.git"},
+            clear=False,
+        ), patch(
+            "src.internal.application.build_environment.get_isolated_env",
+            return_value={
+                "env": {},
+                "repo_dir": str(Path(tmp) / "repo"),
+                "deriveddata_cache_dir": str(Path(tmp) / "DerivedData"),
+            },
+        ), patch(
+            "src.internal.application.build_environment.get_build_workspace",
+            return_value=Path(tmp) / "workspace",
+        ):
+            runtime = assembler.assemble(
+                job,
+                ResolvedVersions(
+                    flutter_sdk_version="3.24.0",
+                    gradle_version=None,
+                    cocoapods_version=None,
+                    fastlane_version=None,
+                ),
+                lambda _: None,
+            )
+
+        self.assertEqual("false", runtime.env["IOS_USE_BUNDLER"])
 
     def test_regular_build_marks_flutter_sdk_state_changed_when_precache_runs(self) -> None:
         repo_manager = StubRepositoryWorkspaceManager()
