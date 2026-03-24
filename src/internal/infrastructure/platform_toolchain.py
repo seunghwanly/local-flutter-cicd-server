@@ -93,15 +93,28 @@ class IOSKeychainPreparer:
         keychain_name = (context.env.get("KEYCHAIN_NAME") or "").strip()
         keychain_password = context.env.get("KEYCHAIN_PASSWORD")
         if not keychain_name:
-            log(f"[{build_id}] ℹ️ KEYCHAIN_NAME not set; skipping keychain preparation")
-            return
+            raise RuntimeError("KEYCHAIN_NAME is required for iOS signing environment preparation")
 
-        keychain_path = self._resolve_keychain_path(keychain_name)
-        if not keychain_path:
-            raise RuntimeError(f"Configured keychain '{keychain_name}' could not be found")
+        keychain_path = self._resolve_keychain_path(keychain_name) or self._planned_keychain_path(keychain_name)
+        if keychain_path is None:
+            raise RuntimeError(f"Configured keychain '{keychain_name}' could not be resolved")
+
+        is_login_keychain = self._is_login_keychain(keychain_path)
+        if not keychain_path.exists():
+            if is_login_keychain:
+                raise RuntimeError(f"Configured login keychain '{keychain_name}' could not be found")
+            if not keychain_password:
+                raise RuntimeError("KEYCHAIN_PASSWORD is required when creating a custom keychain")
+            keychain_path.parent.mkdir(parents=True, exist_ok=True)
+            self.command_runner.run_checked(
+                ["security", "create-keychain", "-p", keychain_password, str(keychain_path)],
+                env=context.env,
+                cwd=str(cwd),
+                should_stop=should_cancel,
+            )
+            log(f"[{build_id}] 🔐 Created keychain: {keychain_path.name}")
 
         keychain_str = str(keychain_path)
-        is_login_keychain = self._is_login_keychain(keychain_path)
         existing = self.command_runner.run(
             ["security", "list-keychains", "-d", "user"],
             env=context.env,
@@ -137,7 +150,7 @@ class IOSKeychainPreparer:
                     "continuing with existing user session state"
                 )
         elif is_login_keychain:
-                log(f"[{build_id}] ℹ️ KEYCHAIN_PASSWORD not set for login keychain; using existing user session state")
+            log(f"[{build_id}] ℹ️ KEYCHAIN_PASSWORD not set for login keychain; using existing user session state")
         else:
             raise RuntimeError("KEYCHAIN_PASSWORD is required when KEYCHAIN_NAME points to a custom keychain")
 
@@ -158,6 +171,7 @@ class IOSKeychainPreparer:
             cwd=str(cwd),
             should_stop=should_cancel,
         )
+        context.env["KEYCHAIN_PATH"] = keychain_str
         context.env["MATCH_KEYCHAIN_NAME"] = keychain_str
         if unlocked_with_password or not is_login_keychain:
             context.env["MATCH_KEYCHAIN_PASSWORD"] = keychain_password or ""
@@ -169,6 +183,16 @@ class IOSKeychainPreparer:
         provided = Path(keychain_name).expanduser()
         if provided.exists():
             return provided.resolve()
+
+        planned = self._planned_keychain_path(keychain_name)
+        if planned and planned.exists():
+            return planned.resolve()
+        return None
+
+    def _planned_keychain_path(self, keychain_name: str) -> Path | None:
+        provided = Path(keychain_name).expanduser()
+        if provided.is_absolute():
+            return provided
 
         keychain_dir = Path.home() / "Library" / "Keychains"
         candidates = [keychain_name]
@@ -185,7 +209,11 @@ class IOSKeychainPreparer:
             path = (keychain_dir / candidate).expanduser()
             if path.exists():
                 return path.resolve()
-        return None
+        if keychain_name.endswith(".keychain-db"):
+            return (keychain_dir / keychain_name).expanduser()
+        if keychain_name.endswith(".keychain"):
+            return (keychain_dir / f"{keychain_name}-db").expanduser()
+        return (keychain_dir / f"{keychain_name}.keychain-db").expanduser()
 
     def _parse_keychains(self, output: str) -> list[str]:
         parsed: list[str] = []
@@ -198,6 +226,7 @@ class IOSKeychainPreparer:
     def _is_login_keychain(self, keychain_path: Path) -> bool:
         name = keychain_path.name
         return name in {"login.keychain", "login.keychain-db"}
+
 
 class PlatformToolchainPreparer:
     """Prepare per-platform Ruby and native build toolchains."""
@@ -258,7 +287,10 @@ class PlatformToolchainPreparer:
         if not ios_dir.exists():
             return
 
+        self._validate_ios_runtime_requirements(build_id, context, log)
         self.ios_keychain.prepare(build_id, context, ios_dir, log, should_cancel=should_cancel)
+        self._prepare_flutter_ios_artifacts(build_id, context, ios_dir, log, should_cancel=should_cancel)
+        self._plan_ios_pod_install(build_id, context, ios_dir, log)
         self.ruby_toolchain.configure_environment(ios_dir, context.env, build_id, log, should_cancel=should_cancel)
         if (ios_dir / "Gemfile").exists():
             self.ruby_toolchain.ensure_gem(
@@ -289,6 +321,120 @@ class PlatformToolchainPreparer:
             "fastlane", context.env.get("FASTLANE_VERSION"), ios_dir, context.env, build_id, log, should_cancel=should_cancel
         )
         self.ruby_toolchain.install_fastlane_plugins(ios_dir, context.env, build_id, log, should_cancel=should_cancel)
+
+    def _validate_ios_runtime_requirements(self, build_id: str, context: BuildRuntimeContext, log) -> None:
+        keychain_name = (context.env.get("KEYCHAIN_NAME") or "").strip()
+        if not keychain_name:
+            raise RuntimeError("KEYCHAIN_NAME is required for iOS builds")
+
+        keychain_password = context.env.get("KEYCHAIN_PASSWORD", "").strip()
+        keychain_path = (
+            self.ios_keychain._resolve_keychain_path(keychain_name)
+            or self.ios_keychain._planned_keychain_path(keychain_name)
+        )
+        is_login_keychain = bool(keychain_path and self.ios_keychain._is_login_keychain(keychain_path))
+        if not is_login_keychain and not keychain_password:
+            raise RuntimeError("KEYCHAIN_PASSWORD is required when KEYCHAIN_NAME points to a custom keychain")
+
+        match_password = (context.env.get("MATCH_PASSWORD") or "").strip()
+        if not match_password:
+            raise RuntimeError("MATCH_PASSWORD is required for iOS builds")
+
+        has_appstore_api = all(
+            (context.env.get(key) or "").strip()
+            for key in ("APPSTORE_API_KEY_ID", "APPSTORE_ISSUER_ID", "APPSTORE_API_PRIVATE_KEY")
+        )
+        has_fastlane_session = all(
+            (context.env.get(key) or "").strip()
+            for key in ("FASTLANE_USER", "FASTLANE_PASSWORD")
+        )
+        if not has_appstore_api and not has_fastlane_session:
+            raise RuntimeError(
+                "App Store authentication is required for iOS builds. "
+                "Set APPSTORE_API_KEY_ID/APPSTORE_ISSUER_ID/APPSTORE_API_PRIVATE_KEY or FASTLANE_USER/FASTLANE_PASSWORD."
+            )
+
+        log(f"[{build_id}] ✅ iOS signing prerequisites are present before Fastlane")
+
+    def _prepare_flutter_ios_artifacts(
+        self,
+        build_id: str,
+        context: BuildRuntimeContext,
+        ios_dir: Path,
+        log,
+        should_cancel=None,
+    ) -> None:
+        project_root = ios_dir.parent
+        artifact_path = project_root / ".fvm" / "flutter_sdk" / "bin" / "cache" / "artifacts" / "engine" / "ios" / "Flutter.xcframework"
+        if artifact_path.exists():
+            return
+
+        log(f"[{build_id}] 📦 Flutter iOS engine artifact missing; running fvm flutter precache --ios")
+        self.command_runner.run_checked(
+            ["fvm", "flutter", "precache", "--ios"],
+            env=context.env,
+            cwd=str(project_root),
+            should_stop=should_cancel,
+        )
+        context.env["IOS_FLUTTER_SDK_CHANGED"] = "true"
+
+    def _plan_ios_pod_install(self, build_id: str, context: BuildRuntimeContext, ios_dir: Path, log) -> None:
+        requested_policy = (context.env.get("IOS_RUN_POD_INSTALL") or "auto").strip()
+        normalized_policy = requested_policy.lower()
+        reasons: list[str] = []
+        should_run = False
+
+        if normalized_policy in {"true", "1", "yes"}:
+            should_run = True
+            reasons.append(f"forced by IOS_RUN_POD_INSTALL={requested_policy}")
+        elif normalized_policy in {"false", "0", "no"}:
+            should_run = False
+        else:
+            if normalized_policy not in {"auto", ""}:
+                log(f"[{build_id}] ⚠️ Unknown IOS_RUN_POD_INSTALL={requested_policy}; falling back to auto detection")
+            should_run, reasons = self._detect_ios_pod_install_reasons(context, ios_dir)
+
+        context.env["IOS_SHOULD_RUN_POD_INSTALL"] = "true" if should_run else "false"
+        context.env["IOS_POD_INSTALL_REASONS"] = " | ".join(reasons)
+        if should_run:
+            log(f"[{build_id}] 📚 pod install scheduled: {' | '.join(reasons)}")
+        else:
+            log(f"[{build_id}] ⏭️ pod install not required before Fastlane")
+
+    def _detect_ios_pod_install_reasons(self, context: BuildRuntimeContext, ios_dir: Path) -> tuple[bool, list[str]]:
+        reasons: list[str] = []
+        podfile_lock = ios_dir / "Podfile.lock"
+        pods_manifest = ios_dir / "Pods" / "Manifest.lock"
+        pod_state_file = pods_manifest if pods_manifest.exists() else podfile_lock if podfile_lock.exists() else None
+
+        if not podfile_lock.exists():
+            reasons.append("Podfile.lock missing")
+        if not (ios_dir / "Pods" / "Pods.xcodeproj").exists():
+            reasons.append("Pods/Pods.xcodeproj missing")
+        if not (ios_dir / "Runner.xcworkspace").exists():
+            reasons.append("Runner.xcworkspace missing")
+        if not (ios_dir / "Flutter" / "Generated.xcconfig").exists():
+            reasons.append("Flutter/Generated.xcconfig missing")
+        if podfile_lock.exists() and pods_manifest.exists() and podfile_lock.read_bytes() != pods_manifest.read_bytes():
+            reasons.append("Podfile.lock and Pods/Manifest.lock differ")
+        if (
+            pod_state_file
+            and (ios_dir / "Podfile").exists()
+            and (ios_dir / "Podfile").stat().st_mtime > pod_state_file.stat().st_mtime
+        ):
+            reasons.append(f"Podfile is newer than {pod_state_file.relative_to(ios_dir)}")
+
+        plugins_dependencies = ios_dir.parent / ".flutter-plugins-dependencies"
+        if plugins_dependencies.exists():
+            if pod_state_file is None:
+                reasons.append(".flutter-plugins-dependencies changed without an existing pod state file")
+            elif plugins_dependencies.stat().st_mtime > pod_state_file.stat().st_mtime:
+                reasons.append(f".flutter-plugins-dependencies is newer than {pod_state_file.relative_to(ios_dir)}")
+
+        if (context.env.get("IOS_FLUTTER_SDK_CHANGED") or "").strip().lower() == "true":
+            reasons.append("Flutter SDK version changed since previous sync")
+
+        return bool(reasons), reasons
 
     def _prepare_android_toolchain(
         self,

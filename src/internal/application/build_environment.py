@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 from ..core import BuildRuntimeContext
 from ..core.config import get_build_workspace, get_isolated_env
@@ -35,7 +36,6 @@ class BuildEnvironmentAssembler:
                 "FLAVOR": job.flavor,
                 "TRIGGER_SOURCE": job.trigger_source,
                 "FASTLANE_LANE": fastlane_lane,
-                "IOS_USE_BUNDLER": self._resolve_ios_use_bundler(job),
                 "IOS_RUN_POD_INSTALL": self._resolve_ios_run_pod_install(),
                 "DATADOG_API_KEY": os.environ.get("DATADOG_API_KEY", ""),
                 "GYM_DERIVED_DATA_PATH": isolated["deriveddata_cache_dir"],
@@ -56,6 +56,7 @@ class BuildEnvironmentAssembler:
             should_cancel=should_cancel,
         )
         env["LOCAL_DIR"] = prepared.repo_dir
+        env["IOS_USE_BUNDLER"] = self._resolve_ios_use_bundler(job, Path(prepared.repo_dir) / "ios")
         # Force pod install auto-detection when iOS precache had to repair SDK state.
         env["IOS_FLUTTER_SDK_CHANGED"] = "true" if (prepared.flutter_version_changed or prepared.precache_ran) else "false"
         job.mark_stage_completed("repository_synced", f"Repository synchronized for {job.branch_name}")
@@ -133,7 +134,9 @@ class BuildEnvironmentAssembler:
             return os.environ.get(f"SHOREBIRD_{job.flavor.upper()}_FASTLANE_LANE", f"patch_{job.flavor}")
         return os.environ.get(f"{job.flavor.upper()}_FASTLANE_LANE", "beta")
 
-    def _resolve_ios_use_bundler(self, job: BuildJob) -> str:
+    def _resolve_ios_use_bundler(self, job: BuildJob, ios_dir: Path) -> str:
+        if not ios_dir.exists() or not (ios_dir / "Gemfile").exists():
+            return "false"
         if job.platform in {"ios", "all"} and job.trigger_source in {"shorebird", "shorebird_manual"}:
             return "false"
         return "true"

@@ -35,6 +35,53 @@ class FakeCommandRunner:
         return result
 
 
+def create_flutter_ios_artifact(repo_dir: Path) -> None:
+    artifact_dir = repo_dir / ".fvm" / "flutter_sdk" / "bin" / "cache" / "artifacts" / "engine" / "ios" / "Flutter.xcframework"
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+
+
+def default_ios_env(**overrides: str) -> dict[str, str]:
+    env = {
+        "GEM_HOME": "/tmp/gems",
+        "KEYCHAIN_NAME": "login.keychain",
+        "KEYCHAIN_PASSWORD": "secret",
+        "MATCH_PASSWORD": "match-secret",
+        "APPSTORE_API_KEY_ID": "key-id",
+        "APPSTORE_ISSUER_ID": "issuer-id",
+        "APPSTORE_API_PRIVATE_KEY": "private-key",
+    }
+    env.update(overrides)
+    return env
+
+
+def register_login_keychain(
+    runner: FakeCommandRunner,
+    home: Path,
+    *,
+    password: str = "secret",
+    listed: bool = True,
+) -> Path:
+    keychain_dir = home / "Library" / "Keychains"
+    keychain_dir.mkdir(parents=True, exist_ok=True)
+    keychain_path = keychain_dir / "login.keychain-db"
+    keychain_path.write_text("", encoding="utf-8")
+
+    if listed:
+        runner.add_response(
+            ["security", "list-keychains", "-d", "user"],
+            stdout=f"    \"{keychain_path.resolve()}\"\n",
+        )
+    else:
+        runner.add_response(["security", "list-keychains", "-d", "user"], stdout="    \"/tmp/other.keychain-db\"\n")
+        runner.add_response(
+            ["security", "list-keychains", "-d", "user", "-s", "/tmp/other.keychain-db", str(keychain_path.resolve())]
+        )
+    runner.add_response(["security", "unlock-keychain", "-p", password, str(keychain_path.resolve())])
+    runner.add_response(["security", "set-keychain-settings", "-lut", "21600", str(keychain_path.resolve())])
+    runner.add_response(["security", "default-keychain", "-d", "user", "-s", str(keychain_path.resolve())])
+    return keychain_path
+
+
 class SetupExecutorTests(unittest.TestCase):
     def test_run_setup_repairs_cache_and_retries_pub_get_without_melos(self) -> None:
         runner = FakeCommandRunner()
@@ -115,7 +162,7 @@ class SetupExecutorTests(unittest.TestCase):
         runner.add_response(["bundle", "_2.7.2_", "config", "set", "--local", "path", "/tmp/gems/ruby-3.2.0/bundle"])
         runner.add_response(["bundle", "_2.7.2_", "install"], stdout="bundle ok")
 
-        with tempfile.TemporaryDirectory() as tmp:
+        with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as home:
             repo_dir = Path(tmp) / "repo"
             ios_dir = repo_dir / "ios"
             ios_dir.mkdir(parents=True)
@@ -131,19 +178,22 @@ class SetupExecutorTests(unittest.TestCase):
                 "   2.7.2\n",
                 encoding="utf-8",
             )
+            create_flutter_ios_artifact(repo_dir)
+            register_login_keychain(runner, Path(home))
 
             context = BuildRuntimeContext(
-                env={"GEM_HOME": "/tmp/gems", "COCOAPODS_VERSION": "1.16.2"},
+                env=default_ios_env(COCOAPODS_VERSION="1.16.2"),
                 repo_dir=str(repo_dir),
                 workspace=tmp,
             )
 
-            executor.prepare_platform_toolchain(
-                build_id="build-ios",
-                platform="ios",
-                context=context,
-                log=logs.append,
-            )
+            with patch("pathlib.Path.home", return_value=Path(home)):
+                executor.prepare_platform_toolchain(
+                    build_id="build-ios",
+                    platform="ios",
+                    context=context,
+                    log=logs.append,
+                )
 
         self.assertIn(("gem", "list", "-i", "cocoapods", "-v", "1.16.2"), runner.calls)
         self.assertIn(("gem", "list", "-i", "bundler", "-v", "2.7.2"), runner.calls)
@@ -152,6 +202,7 @@ class SetupExecutorTests(unittest.TestCase):
         self.assertTrue(any("Installing Ruby bundle" in line for line in logs))
         self.assertEqual("/tmp/gems/ruby-3.2.0", context.env["GEM_HOME"])
         self.assertEqual("/tmp/gems/ruby-3.2.0/bundle", context.env["BUNDLE_PATH"])
+        self.assertEqual("true", context.env["IOS_SHOULD_RUN_POD_INSTALL"])
 
     def test_prepare_ios_toolchain_prepares_standalone_fastlane_for_shorebird_patch(self) -> None:
         runner = FakeCommandRunner()
@@ -166,7 +217,7 @@ class SetupExecutorTests(unittest.TestCase):
         runner.add_response(["gem", "list", "-i", "fastlane"], returncode=0)
         runner.add_response(["gem", "list", "-i", "fastlane-plugin-shorebird"], returncode=0)
 
-        with tempfile.TemporaryDirectory() as tmp:
+        with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as home:
             repo_dir = Path(tmp) / "repo"
             ios_dir = repo_dir / "ios"
             fastlane_dir = ios_dir / "fastlane"
@@ -187,20 +238,23 @@ class SetupExecutorTests(unittest.TestCase):
                 "gem 'fastlane-plugin-shorebird'\n",
                 encoding="utf-8",
             )
+            create_flutter_ios_artifact(repo_dir)
+            register_login_keychain(runner, Path(home))
 
             context = BuildRuntimeContext(
-                env={"GEM_HOME": "/tmp/gems", "COCOAPODS_VERSION": "1.16.2"},
+                env=default_ios_env(COCOAPODS_VERSION="1.16.2"),
                 repo_dir=str(repo_dir),
                 workspace=tmp,
                 trigger_source="shorebird_manual",
             )
 
-            executor.prepare_platform_toolchain(
-                build_id="build-ios-shorebird",
-                platform="ios",
-                context=context,
-                log=lambda _: None,
-            )
+            with patch("pathlib.Path.home", return_value=Path(home)):
+                executor.prepare_platform_toolchain(
+                    build_id="build-ios-shorebird",
+                    platform="ios",
+                    context=context,
+                    log=lambda _: None,
+                )
 
         self.assertIn(("bundle", "_2.7.2_", "install"), runner.calls)
         self.assertIn(("gem", "list", "-i", "fastlane"), runner.calls)
@@ -255,18 +309,7 @@ class SetupExecutorTests(unittest.TestCase):
         logs: list[str] = []
 
         with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as home:
-            keychain_dir = Path(home) / "Library" / "Keychains"
-            keychain_dir.mkdir(parents=True, exist_ok=True)
-            keychain_path = keychain_dir / "login.keychain-db"
-            keychain_path.write_text("", encoding="utf-8")
-
-            runner.add_response(["security", "list-keychains", "-d", "user"], stdout="    \"/tmp/other.keychain-db\"\n")
-            runner.add_response(
-                ["security", "list-keychains", "-d", "user", "-s", "/tmp/other.keychain-db", str(keychain_path.resolve())]
-            )
-            runner.add_response(["security", "unlock-keychain", "-p", "secret", str(keychain_path.resolve())])
-            runner.add_response(["security", "set-keychain-settings", "-lut", "21600", str(keychain_path.resolve())])
-            runner.add_response(["security", "default-keychain", "-d", "user", "-s", str(keychain_path.resolve())])
+            keychain_path = register_login_keychain(runner, Path(home), listed=False)
             runner.add_response(["rbenv", "versions", "--bare"], stdout="3.2.0\n")
             runner.add_response(["ruby", "-e", "print RUBY_VERSION"], stdout="3.2.0")
             runner.add_response(["gem", "list", "-i", "cocoapods"], returncode=0)
@@ -275,12 +318,9 @@ class SetupExecutorTests(unittest.TestCase):
             repo_dir = Path(tmp) / "repo"
             ios_dir = repo_dir / "ios"
             ios_dir.mkdir(parents=True)
+            create_flutter_ios_artifact(repo_dir)
             context = BuildRuntimeContext(
-                env={
-                    "GEM_HOME": "/tmp/gems",
-                    "KEYCHAIN_NAME": "login.keychain",
-                    "KEYCHAIN_PASSWORD": "secret",
-                },
+                env=default_ios_env(),
                 repo_dir=str(repo_dir),
                 workspace=tmp,
             )
@@ -295,6 +335,7 @@ class SetupExecutorTests(unittest.TestCase):
 
         self.assertIn(("security", "unlock-keychain", "-p", "secret", str(keychain_path.resolve())), runner.calls)
         self.assertIn(("security", "default-keychain", "-d", "user", "-s", str(keychain_path.resolve())), runner.calls)
+        self.assertEqual(str(keychain_path.resolve()), context.env["KEYCHAIN_PATH"])
         self.assertEqual(str(keychain_path.resolve()), context.env["MATCH_KEYCHAIN_NAME"])
         self.assertEqual("secret", context.env["MATCH_KEYCHAIN_PASSWORD"])
         self.assertTrue(any("Prepared keychain" in line for line in logs))
@@ -309,7 +350,6 @@ class SetupExecutorTests(unittest.TestCase):
             keychain_dir.mkdir(parents=True, exist_ok=True)
             keychain_path = keychain_dir / "login.keychain-db"
             keychain_path.write_text("", encoding="utf-8")
-
             runner.add_response(["security", "list-keychains", "-d", "user"], stdout="    \"/tmp/other.keychain-db\"\n")
             runner.add_response(
                 ["security", "list-keychains", "-d", "user", "-s", "/tmp/other.keychain-db", str(keychain_path.resolve())]
@@ -329,12 +369,9 @@ class SetupExecutorTests(unittest.TestCase):
             repo_dir = Path(tmp) / "repo"
             ios_dir = repo_dir / "ios"
             ios_dir.mkdir(parents=True)
+            create_flutter_ios_artifact(repo_dir)
             context = BuildRuntimeContext(
-                env={
-                    "GEM_HOME": "/tmp/gems",
-                    "KEYCHAIN_NAME": "login.keychain",
-                    "KEYCHAIN_PASSWORD": "wrong-secret",
-                },
+                env=default_ios_env(KEYCHAIN_PASSWORD="wrong-secret"),
                 repo_dir=str(repo_dir),
                 workspace=tmp,
             )
@@ -351,6 +388,81 @@ class SetupExecutorTests(unittest.TestCase):
         self.assertEqual(str(keychain_path.resolve()), context.env["MATCH_KEYCHAIN_NAME"])
         self.assertNotIn("MATCH_KEYCHAIN_PASSWORD", context.env)
         self.assertTrue(any("login keychain unlock failed" in line for line in logs))
+
+    def test_prepare_ios_toolchain_creates_custom_keychain_when_missing(self) -> None:
+        runner = FakeCommandRunner()
+        executor = SetupExecutor(runner)
+        logs: list[str] = []
+
+        with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as home:
+            repo_dir = Path(tmp) / "repo"
+            ios_dir = repo_dir / "ios"
+            ios_dir.mkdir(parents=True)
+            create_flutter_ios_artifact(repo_dir)
+
+            custom_keychain = Path(home) / "Library" / "Keychains" / "ppb_ci_signing.keychain-db"
+            runner.add_response(["security", "create-keychain", "-p", "secret", str(custom_keychain)])
+            runner.add_response(["security", "list-keychains", "-d", "user"], stdout="")
+            runner.add_response(["security", "list-keychains", "-d", "user", "-s", str(custom_keychain)])
+            runner.add_response(["security", "unlock-keychain", "-p", "secret", str(custom_keychain)])
+            runner.add_response(["security", "set-keychain-settings", "-lut", "21600", str(custom_keychain)])
+            runner.add_response(["security", "default-keychain", "-d", "user", "-s", str(custom_keychain)])
+            runner.add_response(["rbenv", "versions", "--bare"], stdout="3.2.0\n")
+            runner.add_response(["ruby", "-e", "print RUBY_VERSION"], stdout="3.2.0")
+            runner.add_response(["gem", "list", "-i", "cocoapods"], returncode=0)
+            runner.add_response(["gem", "list", "-i", "fastlane"], returncode=0)
+
+            context = BuildRuntimeContext(
+                env=default_ios_env(KEYCHAIN_NAME="ppb_ci_signing", MATCH_PASSWORD="match-secret"),
+                repo_dir=str(repo_dir),
+                workspace=tmp,
+            )
+
+            with patch("pathlib.Path.home", return_value=Path(home)):
+                executor.prepare_platform_toolchain(
+                    build_id="build-custom-keychain",
+                    platform="ios",
+                    context=context,
+                    log=logs.append,
+                )
+
+        self.assertIn(("security", "create-keychain", "-p", "secret", str(custom_keychain)), runner.calls)
+        self.assertEqual(str(custom_keychain), context.env["KEYCHAIN_PATH"])
+        self.assertEqual(str(custom_keychain), context.env["MATCH_KEYCHAIN_NAME"])
+        self.assertEqual("secret", context.env["MATCH_KEYCHAIN_PASSWORD"])
+        self.assertTrue(any("Created keychain" in line for line in logs))
+
+    def test_prepare_ios_toolchain_repairs_missing_flutter_artifact_before_fastlane(self) -> None:
+        runner = FakeCommandRunner()
+        executor = SetupExecutor(runner)
+
+        with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as home:
+            repo_dir = Path(tmp) / "repo"
+            ios_dir = repo_dir / "ios"
+            ios_dir.mkdir(parents=True)
+            register_login_keychain(runner, Path(home))
+            runner.add_response(["fvm", "flutter", "precache", "--ios"])
+            runner.add_response(["rbenv", "versions", "--bare"], stdout="3.2.0\n")
+            runner.add_response(["ruby", "-e", "print RUBY_VERSION"], stdout="3.2.0")
+            runner.add_response(["gem", "list", "-i", "cocoapods"], returncode=0)
+            runner.add_response(["gem", "list", "-i", "fastlane"], returncode=0)
+
+            context = BuildRuntimeContext(
+                env=default_ios_env(IOS_RUN_POD_INSTALL="false"),
+                repo_dir=str(repo_dir),
+                workspace=tmp,
+            )
+
+            with patch("pathlib.Path.home", return_value=Path(home)):
+                executor.prepare_platform_toolchain(
+                    build_id="build-precache-ios",
+                    platform="ios",
+                    context=context,
+                    log=lambda _: None,
+                )
+
+        self.assertIn(("fvm", "flutter", "precache", "--ios"), runner.calls)
+        self.assertEqual("true", context.env["IOS_FLUTTER_SDK_CHANGED"])
 
     def test_prepare_android_toolchain_fails_when_lockfile_requires_newer_ruby(self) -> None:
         runner = FakeCommandRunner()
