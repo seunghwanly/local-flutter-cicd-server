@@ -335,9 +335,9 @@ class SetupExecutorTests(unittest.TestCase):
 
         self.assertIn(("security", "unlock-keychain", "-p", "secret", str(keychain_path.resolve())), runner.calls)
         self.assertIn(("security", "default-keychain", "-d", "user", "-s", str(keychain_path.resolve())), runner.calls)
-        self.assertEqual(str(keychain_path.resolve()), context.env["KEYCHAIN_PATH"])
-        self.assertEqual(str(keychain_path.resolve()), context.env["MATCH_KEYCHAIN_NAME"])
-        self.assertEqual("secret", context.env["MATCH_KEYCHAIN_PASSWORD"])
+        self.assertNotIn("KEYCHAIN_PATH", context.env)
+        self.assertNotIn("MATCH_KEYCHAIN_NAME", context.env)
+        self.assertNotIn("MATCH_KEYCHAIN_PASSWORD", context.env)
         self.assertTrue(any("Prepared keychain" in line for line in logs))
 
     def test_prepare_ios_toolchain_tolerates_login_keychain_unlock_failure(self) -> None:
@@ -385,7 +385,7 @@ class SetupExecutorTests(unittest.TestCase):
                 )
 
         self.assertIn(("security", "default-keychain", "-d", "user", "-s", str(keychain_path.resolve())), runner.calls)
-        self.assertEqual(str(keychain_path.resolve()), context.env["MATCH_KEYCHAIN_NAME"])
+        self.assertNotIn("MATCH_KEYCHAIN_NAME", context.env)
         self.assertNotIn("MATCH_KEYCHAIN_PASSWORD", context.env)
         self.assertTrue(any("login keychain unlock failed" in line for line in logs))
 
@@ -427,9 +427,9 @@ class SetupExecutorTests(unittest.TestCase):
                 )
 
         self.assertIn(("security", "create-keychain", "-p", "secret", str(custom_keychain)), runner.calls)
-        self.assertEqual(str(custom_keychain), context.env["KEYCHAIN_PATH"])
-        self.assertEqual(str(custom_keychain), context.env["MATCH_KEYCHAIN_NAME"])
-        self.assertEqual("secret", context.env["MATCH_KEYCHAIN_PASSWORD"])
+        self.assertNotIn("KEYCHAIN_PATH", context.env)
+        self.assertNotIn("MATCH_KEYCHAIN_NAME", context.env)
+        self.assertNotIn("MATCH_KEYCHAIN_PASSWORD", context.env)
         self.assertTrue(any("Created keychain" in line for line in logs))
 
     def test_prepare_ios_toolchain_repairs_missing_flutter_artifact_before_fastlane(self) -> None:

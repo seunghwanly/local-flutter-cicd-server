@@ -171,12 +171,6 @@ class IOSKeychainPreparer:
             cwd=str(cwd),
             should_stop=should_cancel,
         )
-        context.env["KEYCHAIN_PATH"] = keychain_str
-        context.env["MATCH_KEYCHAIN_NAME"] = keychain_str
-        if unlocked_with_password or not is_login_keychain:
-            context.env["MATCH_KEYCHAIN_PASSWORD"] = keychain_password or ""
-        else:
-            context.env.pop("MATCH_KEYCHAIN_PASSWORD", None)
         log(f"[{build_id}] 🔐 Prepared keychain: {keychain_path.name}")
 
     def _resolve_keychain_path(self, keychain_name: str) -> Path | None:
