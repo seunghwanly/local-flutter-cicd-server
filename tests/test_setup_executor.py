@@ -77,6 +77,11 @@ def register_login_keychain(
             ["security", "list-keychains", "-d", "user", "-s", "/tmp/other.keychain-db", str(keychain_path.resolve())]
         )
     runner.add_response(["security", "unlock-keychain", "-p", password, str(keychain_path.resolve())])
+    runner.add_response([
+        "security", "set-key-partition-list",
+        "-S", "apple-tool:,apple:,codesign:",
+        "-s", "-k", password, str(keychain_path.resolve()),
+    ])
     runner.add_response(["security", "set-keychain-settings", "-lut", "21600", str(keychain_path.resolve())])
     runner.add_response(["security", "default-keychain", "-d", "user", "-s", str(keychain_path.resolve())])
     return keychain_path
@@ -334,6 +339,11 @@ class SetupExecutorTests(unittest.TestCase):
                 )
 
         self.assertIn(("security", "unlock-keychain", "-p", "secret", str(keychain_path.resolve())), runner.calls)
+        self.assertIn((
+            "security", "set-key-partition-list",
+            "-S", "apple-tool:,apple:,codesign:",
+            "-s", "-k", "secret", str(keychain_path.resolve()),
+        ), runner.calls)
         self.assertIn(("security", "default-keychain", "-d", "user", "-s", str(keychain_path.resolve())), runner.calls)
         self.assertNotIn("KEYCHAIN_PATH", context.env)
         self.assertNotIn("MATCH_KEYCHAIN_NAME", context.env)
@@ -405,6 +415,11 @@ class SetupExecutorTests(unittest.TestCase):
             runner.add_response(["security", "list-keychains", "-d", "user"], stdout="")
             runner.add_response(["security", "list-keychains", "-d", "user", "-s", str(custom_keychain)])
             runner.add_response(["security", "unlock-keychain", "-p", "secret", str(custom_keychain)])
+            runner.add_response([
+                "security", "set-key-partition-list",
+                "-S", "apple-tool:,apple:,codesign:",
+                "-s", "-k", "secret", str(custom_keychain),
+            ])
             runner.add_response(["security", "set-keychain-settings", "-lut", "21600", str(custom_keychain)])
             runner.add_response(["security", "default-keychain", "-d", "user", "-s", str(custom_keychain)])
             runner.add_response(["rbenv", "versions", "--bare"], stdout="3.2.0\n")
@@ -427,6 +442,11 @@ class SetupExecutorTests(unittest.TestCase):
                 )
 
         self.assertIn(("security", "create-keychain", "-p", "secret", str(custom_keychain)), runner.calls)
+        self.assertIn((
+            "security", "set-key-partition-list",
+            "-S", "apple-tool:,apple:,codesign:",
+            "-s", "-k", "secret", str(custom_keychain),
+        ), runner.calls)
         self.assertNotIn("KEYCHAIN_PATH", context.env)
         self.assertNotIn("MATCH_KEYCHAIN_NAME", context.env)
         self.assertNotIn("MATCH_KEYCHAIN_PASSWORD", context.env)
