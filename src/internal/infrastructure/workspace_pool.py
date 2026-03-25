@@ -142,8 +142,8 @@ class WorkspacePoolManager:
         normalized_repo = _sanitize(Path(repo_url).stem or "repo")
         normalized_branch = _sanitize(branch_name or "unknown")
         normalized_flutter = _sanitize(flutter_version or "auto")
-        normalized_platform = "ios" if platform == "ios" else "android"
+        normalized_platform = _sanitize(platform or "android")
         pieces = [normalized_repo, repo_hash, normalized_branch, normalized_flutter, normalized_platform]
-        if normalized_platform == "ios" and cocoapods_version:
+        if platform in {"ios", "all"} and cocoapods_version:
             pieces.append(_sanitize(cocoapods_version))
         return "__".join(pieces)

@@ -39,6 +39,47 @@ class WorkspacePoolManagerTests(unittest.TestCase):
                 lease1.release()
                 lease2.release()
 
+    def test_all_platform_slot_key_differs_from_android(self) -> None:
+        manager = WorkspacePoolManager(max_slots_per_key=2, wait_timeout=1)
+        key_all = manager._slot_key(
+            repo_url="git@github.com:org/repo.git",
+            branch_name="main",
+            flutter_version="3.24.0",
+            platform="all",
+            cocoapods_version=None,
+        )
+        key_android = manager._slot_key(
+            repo_url="git@github.com:org/repo.git",
+            branch_name="main",
+            flutter_version="3.24.0",
+            platform="android",
+            cocoapods_version=None,
+        )
+        self.assertNotEqual(key_all, key_android)
+        self.assertIn("__all", key_all)
+        self.assertIn("__android", key_android)
+
+    def test_ios_and_all_include_cocoapods_suffix(self) -> None:
+        manager = WorkspacePoolManager(max_slots_per_key=2, wait_timeout=1)
+        for platform in ("ios", "all"):
+            key = manager._slot_key(
+                repo_url="git@github.com:org/repo.git",
+                branch_name="main",
+                flutter_version="3.24.0",
+                platform=platform,
+                cocoapods_version="1.16.2",
+            )
+            self.assertIn("1.16.2", key, f"platform={platform} should include cocoapods version")
+
+        key_android = manager._slot_key(
+            repo_url="git@github.com:org/repo.git",
+            branch_name="main",
+            flutter_version="3.24.0",
+            platform="android",
+            cocoapods_version="1.16.2",
+        )
+        self.assertNotIn("1.16.2", key_android)
+
 
 if __name__ == "__main__":
     unittest.main()
