@@ -154,6 +154,28 @@ class IOSKeychainPreparer:
         else:
             raise RuntimeError("KEYCHAIN_PASSWORD is required when KEYCHAIN_NAME points to a custom keychain")
 
+        if unlocked_with_password:
+            try:
+                self.command_runner.run_checked(
+                    [
+                        "security", "set-key-partition-list",
+                        "-S", "apple-tool:,apple:,codesign:",
+                        "-s", "-k", keychain_password, keychain_str,
+                    ],
+                    env=context.env,
+                    cwd=str(cwd),
+                    should_stop=should_cancel,
+                )
+            except Exception as exc:
+                if not is_login_keychain:
+                    raise RuntimeError(
+                        f"Failed to set key partition list for '{keychain_name}': {exc}"
+                    ) from exc
+                log(
+                    f"[{build_id}] ⚠️ login keychain partition list update failed; "
+                    "codesign may fail with errSecInternalComponent"
+                )
+
         try:
             self.command_runner.run_checked(
                 ["security", "set-keychain-settings", "-lut", "21600", keychain_str],
