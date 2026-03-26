@@ -103,16 +103,21 @@ class PreparedKeychain:
 class IOSKeychainPreparer:
     """Unlock and register the macOS keychain used by iOS signing."""
 
+    _KEYCHAIN_UNLOCK_TIMEOUT_SECONDS = "21600"
+    _PARTITION_LIST_SERVICES = "apple-tool:,apple:,codesign:"
+
     def __init__(self, command_runner: CommandRunner) -> None:
         self.command_runner = command_runner
 
     def prepare(self, build_id: str, context: BuildRuntimeContext, cwd: Path, log, should_cancel=None) -> PreparedKeychain:
         """Ensure the keychain is unlocked and registered for this build.
 
-        Heavy validation (existence, partition-list, codesign identities) is
-        performed once at server startup via ``ConfigDiagnostics.validate_keychain_on_startup``.
-        This method only performs the per-build runtime steps: unlock, register
-        in the search list, and set as default.
+        Heavy validation (existence and codesigning identities) is performed
+        once at server startup via ``ConfigDiagnostics.validate_keychain_on_startup``.
+        This method performs the per-build runtime steps that must be refreshed
+        for each archive session: unlock, extend the auto-lock timeout, apply
+        the partition list for non-interactive codesign, register in the search
+        list, and set as default.
         """
         strategy = self._strategy(context)
         keychain_name = (context.env.get("KEYCHAIN_NAME") or "").strip()
@@ -142,6 +147,14 @@ class IOSKeychainPreparer:
         )
         original_default_keychain = self._parse_default_keychain(default_keychain.stdout)
 
+        # Ensure keychain remains available for long-running archive sessions.
+        self.command_runner.run_checked(
+            ["security", "set-keychain-settings", "-lut", self._KEYCHAIN_UNLOCK_TIMEOUT_SECONDS, keychain_str],
+            env=context.env,
+            cwd=str(cwd),
+            should_stop=should_cancel,
+        )
+
         # Ensure keychain is in the search list
         existing = self.command_runner.run(
             ["security", "list-keychains", "-d", "user"],
@@ -164,6 +177,21 @@ class IOSKeychainPreparer:
         if keychain_password:
             self.command_runner.run_checked(
                 ["security", "unlock-keychain", "-p", keychain_password, keychain_str],
+                env=context.env,
+                cwd=str(cwd),
+                should_stop=should_cancel,
+            )
+            self.command_runner.run_checked(
+                [
+                    "security",
+                    "set-key-partition-list",
+                    "-S",
+                    self._PARTITION_LIST_SERVICES,
+                    "-s",
+                    "-k",
+                    keychain_password,
+                    keychain_str,
+                ],
                 env=context.env,
                 cwd=str(cwd),
                 should_stop=should_cancel,
@@ -389,9 +417,12 @@ class PlatformToolchainPreparer:
                 self.ios_keychain._resolve_keychain_path(keychain_name)
                 or self.ios_keychain._planned_keychain_path(keychain_name)
             )
-            is_login_keychain = bool(keychain_path and self.ios_keychain._is_login_keychain(keychain_path))
-            if not is_login_keychain and not keychain_password:
-                raise RuntimeError("KEYCHAIN_PASSWORD is required when KEYCHAIN_NAME points to a custom keychain")
+            if not keychain_password:
+                resolved_name = keychain_path.name if keychain_path else keychain_name
+                raise RuntimeError(
+                    "KEYCHAIN_PASSWORD is required for configured iOS keychains "
+                    f"to enable non-interactive codesigning ({resolved_name})"
+                )
 
         match_password = (context.env.get("MATCH_PASSWORD") or "").strip()
         if not match_password:

@@ -382,7 +382,21 @@ class SetupExecutorTests(unittest.TestCase):
                     log=logs.append,
                 )
 
+        self.assertIn(("security", "set-keychain-settings", "-lut", "21600", str(keychain_path.resolve())), runner.calls)
         self.assertIn(("security", "unlock-keychain", "-p", "secret", str(keychain_path.resolve())), runner.calls)
+        self.assertIn(
+            (
+                "security",
+                "set-key-partition-list",
+                "-S",
+                "apple-tool:,apple:,codesign:",
+                "-s",
+                "-k",
+                "secret",
+                str(keychain_path.resolve()),
+            ),
+            runner.calls,
+        )
         self.assertIn(("security", "default-keychain", "-d", "user", "-s", str(keychain_path.resolve())), runner.calls)
         self.assertNotIn("KEYCHAIN_PATH", context.env)
         self.assertEqual("login.keychain-db", context.env["KEYCHAIN_NAME"])
@@ -438,6 +452,38 @@ class SetupExecutorTests(unittest.TestCase):
         self.assertNotIn(("security", "default-keychain", "-d", "user", "-s", str(keychain_path.resolve())), runner.calls)
         self.assertEqual("login.keychain", context.env["KEYCHAIN_NAME"])
         self.assertEqual("wrong-secret", context.env["KEYCHAIN_PASSWORD"])
+        self.assertNotIn("MATCH_KEYCHAIN_NAME", context.env)
+        self.assertNotIn("MATCH_KEYCHAIN_PASSWORD", context.env)
+
+    def test_prepare_ios_toolchain_fails_when_configured_keychain_password_missing(self) -> None:
+        runner = FakeCommandRunner()
+        executor = SetupExecutor(runner)
+
+        with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as home:
+            register_login_keychain(runner, Path(home))
+            repo_dir = Path(tmp) / "repo"
+            ios_dir = repo_dir / "ios"
+            ios_dir.mkdir(parents=True)
+            create_flutter_ios_artifact(repo_dir)
+
+            context = BuildRuntimeContext(
+                env=default_ios_env(KEYCHAIN_PASSWORD=""),
+                repo_dir=str(repo_dir),
+                workspace=tmp,
+            )
+
+            with patch("pathlib.Path.home", return_value=Path(home)):
+                with self.assertRaisesRegex(
+                    RuntimeError,
+                    "KEYCHAIN_PASSWORD is required for configured iOS keychains",
+                ):
+                    executor.prepare_platform_toolchain(
+                        build_id="build-missing-keychain-password",
+                        platform="ios",
+                        context=context,
+                        log=lambda _: None,
+                    )
+
         self.assertNotIn("MATCH_KEYCHAIN_NAME", context.env)
         self.assertNotIn("MATCH_KEYCHAIN_PASSWORD", context.env)
 
