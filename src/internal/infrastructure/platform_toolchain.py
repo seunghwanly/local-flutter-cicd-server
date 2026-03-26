@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import platform
 import shutil
 from pathlib import Path
@@ -83,13 +84,32 @@ class ShorebirdCacheValidator:
         return normalized_host == artifact_arch
 
 
+@dataclass(frozen=True)
+class PreparedKeychain:
+    path: Path
+    password: str | None
+
+    def match_name(self) -> str:
+        keychain_dir = (Path.home() / "Library" / "Keychains").resolve()
+        if self.path.parent == keychain_dir or self.path.parent.resolve() == keychain_dir:
+            return self.path.name
+        return str(self.path)
+
+
 class IOSKeychainPreparer:
     """Unlock and register the macOS keychain used by iOS signing."""
 
     def __init__(self, command_runner: CommandRunner) -> None:
         self.command_runner = command_runner
 
-    def prepare(self, build_id: str, context: BuildRuntimeContext, cwd: Path, log, should_cancel=None) -> None:
+    def prepare(self, build_id: str, context: BuildRuntimeContext, cwd: Path, log, should_cancel=None) -> PreparedKeychain:
+        """Ensure the keychain is unlocked and registered for this build.
+
+        Heavy validation (existence, partition-list, codesign identities) is
+        performed once at server startup via ``ConfigDiagnostics.validate_keychain_on_startup``.
+        This method only performs the per-build runtime steps: unlock, register
+        in the search list, and set as default.
+        """
         keychain_name = (context.env.get("KEYCHAIN_NAME") or "").strip()
         keychain_password = context.env.get("KEYCHAIN_PASSWORD")
         if not keychain_name:
@@ -99,22 +119,9 @@ class IOSKeychainPreparer:
         if keychain_path is None:
             raise RuntimeError(f"Configured keychain '{keychain_name}' could not be resolved")
 
-        is_login_keychain = self._is_login_keychain(keychain_path)
-        if not keychain_path.exists():
-            if is_login_keychain:
-                raise RuntimeError(f"Configured login keychain '{keychain_name}' could not be found")
-            if not keychain_password:
-                raise RuntimeError("KEYCHAIN_PASSWORD is required when creating a custom keychain")
-            keychain_path.parent.mkdir(parents=True, exist_ok=True)
-            self.command_runner.run_checked(
-                ["security", "create-keychain", "-p", keychain_password, str(keychain_path)],
-                env=context.env,
-                cwd=str(cwd),
-                should_stop=should_cancel,
-            )
-            log(f"[{build_id}] 🔐 Created keychain: {keychain_path.name}")
-
         keychain_str = str(keychain_path)
+
+        # Ensure keychain is in the search list
         existing = self.command_runner.run(
             ["security", "list-keychains", "-d", "user"],
             env=context.env,
@@ -132,68 +139,25 @@ class IOSKeychainPreparer:
                 should_stop=should_cancel,
             )
 
-        unlocked_with_password = False
+        # Unlock keychain for this build session
         if keychain_password:
-            try:
-                self.command_runner.run_checked(
-                    ["security", "unlock-keychain", "-p", keychain_password, keychain_str],
-                    env=context.env,
-                    cwd=str(cwd),
-                    should_stop=should_cancel,
-                )
-                unlocked_with_password = True
-            except Exception as exc:
-                if not is_login_keychain:
-                    raise RuntimeError(f"Failed to unlock configured keychain '{keychain_name}': {exc}") from exc
-                log(
-                    f"[{build_id}] ⚠️ login keychain unlock failed with KEYCHAIN_PASSWORD; "
-                    "continuing with existing user session state"
-                )
-        elif is_login_keychain:
-            log(f"[{build_id}] ℹ️ KEYCHAIN_PASSWORD not set for login keychain; using existing user session state")
-        else:
-            raise RuntimeError("KEYCHAIN_PASSWORD is required when KEYCHAIN_NAME points to a custom keychain")
-
-        if unlocked_with_password:
-            try:
-                self.command_runner.run_checked(
-                    [
-                        "security", "set-key-partition-list",
-                        "-S", "apple-tool:,apple:,codesign:",
-                        "-s", "-k", keychain_password, keychain_str,
-                    ],
-                    env=context.env,
-                    cwd=str(cwd),
-                    should_stop=should_cancel,
-                )
-            except Exception as exc:
-                if not is_login_keychain:
-                    raise RuntimeError(
-                        f"Failed to set key partition list for '{keychain_name}': {exc}"
-                    ) from exc
-                log(
-                    f"[{build_id}] ⚠️ login keychain partition list update failed; "
-                    "codesign may fail with errSecInternalComponent"
-                )
-
-        try:
             self.command_runner.run_checked(
-                ["security", "set-keychain-settings", "-lut", "21600", keychain_str],
+                ["security", "unlock-keychain", "-p", keychain_password, keychain_str],
                 env=context.env,
                 cwd=str(cwd),
                 should_stop=should_cancel,
             )
-        except Exception as exc:
-            if not is_login_keychain:
-                raise RuntimeError(f"Failed to configure keychain settings for '{keychain_name}': {exc}") from exc
-            log(f"[{build_id}] ⚠️ login keychain settings update failed; continuing with existing settings")
+
+        # Set as default keychain
         self.command_runner.run_checked(
             ["security", "default-keychain", "-d", "user", "-s", keychain_str],
             env=context.env,
             cwd=str(cwd),
             should_stop=should_cancel,
         )
-        log(f"[{build_id}] 🔐 Prepared keychain: {keychain_path.name}")
+        log(f"[{build_id}] 🔐 Keychain ready: {keychain_path.name}")
+        normalized_password = keychain_password.strip() if isinstance(keychain_password, str) else keychain_password
+        return PreparedKeychain(path=keychain_path, password=normalized_password or None)
 
     def _resolve_keychain_path(self, keychain_name: str) -> Path | None:
         provided = Path(keychain_name).expanduser()
@@ -304,7 +268,14 @@ class PlatformToolchainPreparer:
             return
 
         self._validate_ios_runtime_requirements(build_id, context, log)
-        self.ios_keychain.prepare(build_id, context, ios_dir, log, should_cancel=should_cancel)
+        prepared_keychain = self.ios_keychain.prepare(
+            build_id,
+            context,
+            ios_dir,
+            log,
+            should_cancel=should_cancel,
+        )
+        self._configure_fastlane_keychain_env(build_id, context, prepared_keychain, log)
         self._prepare_flutter_ios_artifacts(build_id, context, ios_dir, log, should_cancel=should_cancel)
         self._plan_ios_pod_install(build_id, context, ios_dir, log)
         self.ruby_toolchain.configure_environment(ios_dir, context.env, build_id, log, should_cancel=should_cancel)
@@ -371,6 +342,32 @@ class PlatformToolchainPreparer:
             )
 
         log(f"[{build_id}] ✅ iOS signing prerequisites are present before Fastlane")
+
+    def _configure_fastlane_keychain_env(
+        self,
+        build_id: str,
+        context: BuildRuntimeContext,
+        prepared_keychain: PreparedKeychain,
+        log,
+    ) -> None:
+        match_keychain_name = prepared_keychain.match_name()
+        context.env["KEYCHAIN_NAME"] = match_keychain_name
+        context.env["MATCH_KEYCHAIN_NAME"] = match_keychain_name
+        if prepared_keychain.password:
+            context.env["KEYCHAIN_PASSWORD"] = prepared_keychain.password
+            context.env["MATCH_KEYCHAIN_PASSWORD"] = prepared_keychain.password
+            log(
+                f"[{build_id}] 🔐 Fastlane match will use keychain "
+                f"{context.env['MATCH_KEYCHAIN_NAME']}"
+            )
+            return
+
+        context.env.pop("KEYCHAIN_PASSWORD", None)
+        context.env.pop("MATCH_KEYCHAIN_PASSWORD", None)
+        log(
+            f"[{build_id}] ⚠️ Fastlane match keychain password is unavailable for "
+            f"{context.env['MATCH_KEYCHAIN_NAME']}; the Fastfile must tolerate an existing session"
+        )
 
     def _prepare_flutter_ios_artifacts(
         self,

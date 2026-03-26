@@ -8,7 +8,7 @@
 
 - `make bootstrap`: prepares the macOS dev environment, creates `venv`, and seeds `.env`.
 - `make run`: starts the FastAPI server with `uvicorn` on port `8000`.
-- `make doctor`: runs `python -m compileall src` and shell syntax checks for `action/*.sh` and `local_run.sh`.
+- `make doctor`: runs `python -m compileall src` and shell syntax checks for `action/*.sh`, `scripts/start.sh`, and `scripts/clean.sh`.
 - `make tunnel`: opens `ngrok` for GitHub webhook testing.
 
 Use `curl http://localhost:8000/diagnostics` after startup to confirm env readiness before triggering builds.

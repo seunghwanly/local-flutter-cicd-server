@@ -326,8 +326,8 @@ cp env.template .env
 ### 3. 서버 시작
 
 ```bash
-# 방법 1: local_run.sh 사용 (권장)
-sh local_run.sh
+# 방법 1: start.sh 사용 (권장)
+./scripts/start.sh --foreground
 
 # 방법 2: 직접 실행
 ./venv/bin/uvicorn src.main:app --reload

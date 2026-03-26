@@ -21,7 +21,7 @@ from .settings import AppSettings, bootstrap_environment, get_settings
 logger = logging.getLogger(__name__)
 
 
-def _log_startup_details(settings: AppSettings) -> None:
+def _log_startup_details(settings: AppSettings, diagnostics: ConfigDiagnostics) -> None:
     logger.info("Server startup diagnostics")
     ssh_auth_sock_value = os.environ.get("SSH_AUTH_SOCK")
     ssh_auth_sock = Path(ssh_auth_sock_value) if ssh_auth_sock_value else None
@@ -38,13 +38,36 @@ def _log_startup_details(settings: AppSettings) -> None:
     else:
         logger.warning("SSH key not found: %s", ssh_key)
 
+    _validate_keychain_at_startup(diagnostics)
+
     logger.info("Cleanup scheduler started (keeping %s days)", settings.cache_cleanup_days)
     logger.info("Server ready at http://localhost:8000")
 
 
+def _validate_keychain_at_startup(diagnostics: ConfigDiagnostics) -> None:
+    keychain_name = (os.environ.get("KEYCHAIN_NAME") or "").strip()
+    if not keychain_name:
+        logger.info("KEYCHAIN_NAME not set — keychain validation skipped (iOS builds will be rejected)")
+        return
+
+    result = diagnostics.validate_keychain_on_startup()
+    for key, value in result.details.items():
+        logger.info("Keychain %s: %s", key, value)
+
+    if result.ready:
+        logger.info("✅ Keychain ready for iOS codesigning")
+    else:
+        for issue in result.missing:
+            logger.error("❌ Keychain issue: %s", issue)
+        logger.error(
+            "iOS builds will be rejected until keychain is fixed. "
+            "Fix the issue and restart the server."
+        )
+
+
 def build_container(settings: AppSettings) -> ServiceContainer:
-    build_service = BuildService()
     diagnostics = ConfigDiagnostics()
+    build_service = BuildService(config_diagnostics=diagnostics)
     return ServiceContainer(
         settings=settings,
         diagnostics=diagnostics,
@@ -70,7 +93,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         )
         cleanup_thread.start()
         app.state.cleanup_thread = cleanup_thread
-        _log_startup_details(resolved_settings)
+        _log_startup_details(resolved_settings, container.diagnostics)
         yield
 
     app = FastAPI(

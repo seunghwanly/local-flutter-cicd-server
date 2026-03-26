@@ -9,17 +9,17 @@
 
 ## 🔄 환경변수 로딩 방법
 
-### 방법 1: local_run.sh 사용 (권장) ✅
+### 방법 1: scripts/start.sh 사용 (권장) ✅
 
-`local_run.sh`는 가상환경 준비와 의존성 설치를 처리한 뒤 `uvicorn`을 실행합니다. `.env` 파일 자체는 앱 시작 과정에서 Python 설정 계층이 읽습니다.
+`scripts/start.sh --foreground`는 가상환경 준비와 의존성 설치를 처리한 뒤 `uvicorn`을 실행합니다. `.env` 파일 자체는 앱 시작 과정에서 Python 설정 계층이 읽습니다.
 
 ```bash
-sh local_run.sh
+./scripts/start.sh --foreground
 ```
 
 **사용법:**
 ```bash
-sh local_run.sh
+./scripts/start.sh --foreground
 ```
 
 **장점:**
@@ -52,8 +52,8 @@ source venv/bin/activate
 
 ### 이유
 
-1. **중복 방지**: `local_run.sh`에서 이미 환경변수를 로드하고 있습니다.
-2. **일관성**: `local_run.sh`와 직접 `uvicorn` 실행 모두 같은 `AppSettings` 경로를 사용합니다.
+1. **중복 방지**: `scripts/start.sh`가 가상환경 준비와 실행을 함께 처리합니다.
+2. **일관성**: `scripts/start.sh`와 직접 `uvicorn` 실행 모두 같은 `AppSettings` 경로를 사용합니다.
 3. **안전성**: 멀티라인 값도 `.env` 파서가 그대로 읽을 수 있습니다.
 
 ### 코드 비교
@@ -101,7 +101,7 @@ curl http://localhost:8000/diagnostics
 
 - [ENV_SETUP_GUIDE.md](./ENV_SETUP_GUIDE.md) - 환경변수 설정 가이드
 - [env.template](./env.template) - 환경변수 템플릿
-- [local_run.sh](./local_run.sh) - 서버 시작 스크립트
+- [scripts/start.sh](../scripts/start.sh) - 서버 시작 스크립트
 
 ---
 
@@ -123,7 +123,7 @@ ls -la .env
 cat .env | grep GITHUB_WEBHOOK_SECRET
 
 # 앱 시작 후 진단 확인
-sh local_run.sh
+./scripts/start.sh --foreground
 curl http://localhost:8000/diagnostics
 ```
 
@@ -145,7 +145,7 @@ MIGTAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBHkwdwIBAQQg...
 -----END PRIVATE KEY-----"
 ```
 
-그리고 서버는 `local_run.sh` 또는 `./venv/bin/uvicorn src.main:app ...`로 실행하세요. `.env`는 앱이 직접 읽습니다.
+그리고 서버는 `./scripts/start.sh --foreground` 또는 `./venv/bin/uvicorn src.main:app ...`로 실행하세요. `.env`는 앱이 직접 읽습니다.
 
 ---
 

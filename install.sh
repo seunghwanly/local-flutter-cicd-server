@@ -6,7 +6,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT_DIR"
 
 echo "📦 Installing local Flutter CI/CD environment..."
-./scripts/bootstrap_macos.sh
+./scripts/start.sh --bootstrap-only
 
 echo ""
 echo "🩺 Running repository checks..."

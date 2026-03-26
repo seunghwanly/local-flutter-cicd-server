@@ -205,9 +205,50 @@ class SetupExecutorTests(unittest.TestCase):
         self.assertIn(("bundle", "_2.7.2_", "config", "set", "--local", "path", "/tmp/gems/ruby-3.2.0/bundle"), runner.calls)
         self.assertIn(("bundle", "_2.7.2_", "install"), runner.calls)
         self.assertTrue(any("Installing Ruby bundle" in line for line in logs))
+        self.assertEqual("login.keychain-db", context.env["KEYCHAIN_NAME"])
+        self.assertEqual("secret", context.env["KEYCHAIN_PASSWORD"])
+        self.assertEqual("login.keychain-db", context.env["MATCH_KEYCHAIN_NAME"])
+        self.assertEqual("secret", context.env["MATCH_KEYCHAIN_PASSWORD"])
         self.assertEqual("/tmp/gems/ruby-3.2.0", context.env["GEM_HOME"])
         self.assertEqual("/tmp/gems/ruby-3.2.0/bundle", context.env["BUNDLE_PATH"])
         self.assertEqual("true", context.env["IOS_SHOULD_RUN_POD_INSTALL"])
+
+    def test_prepare_ios_toolchain_exports_fastlane_match_keychain_env(self) -> None:
+        runner = FakeCommandRunner()
+        executor = SetupExecutor(runner)
+        logs: list[str] = []
+
+        runner.add_response(["rbenv", "versions", "--bare"], stdout="3.2.0\n")
+        runner.add_response(["ruby", "-e", "print RUBY_VERSION"], stdout="3.2.0")
+        runner.add_response(["gem", "list", "-i", "cocoapods"], returncode=0)
+        runner.add_response(["gem", "list", "-i", "fastlane"], returncode=0)
+
+        with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as home:
+            repo_dir = Path(tmp) / "repo"
+            ios_dir = repo_dir / "ios"
+            ios_dir.mkdir(parents=True)
+            create_flutter_ios_artifact(repo_dir)
+            keychain_path = register_login_keychain(runner, Path(home))
+
+            context = BuildRuntimeContext(
+                env=default_ios_env(),
+                repo_dir=str(repo_dir),
+                workspace=tmp,
+            )
+
+            with patch("pathlib.Path.home", return_value=Path(home)):
+                executor.prepare_platform_toolchain(
+                    build_id="build-match-keychain",
+                    platform="ios",
+                    context=context,
+                    log=logs.append,
+                )
+
+        self.assertEqual(keychain_path.name, context.env["MATCH_KEYCHAIN_NAME"])
+        self.assertEqual("secret", context.env["MATCH_KEYCHAIN_PASSWORD"])
+        self.assertEqual(keychain_path.name, context.env["KEYCHAIN_NAME"])
+        self.assertEqual("secret", context.env["KEYCHAIN_PASSWORD"])
+        self.assertTrue(any("Fastlane match will use keychain" in line for line in logs))
 
     def test_prepare_ios_toolchain_prepares_standalone_fastlane_for_shorebird_patch(self) -> None:
         runner = FakeCommandRunner()
@@ -339,21 +380,17 @@ class SetupExecutorTests(unittest.TestCase):
                 )
 
         self.assertIn(("security", "unlock-keychain", "-p", "secret", str(keychain_path.resolve())), runner.calls)
-        self.assertIn((
-            "security", "set-key-partition-list",
-            "-S", "apple-tool:,apple:,codesign:",
-            "-s", "-k", "secret", str(keychain_path.resolve()),
-        ), runner.calls)
         self.assertIn(("security", "default-keychain", "-d", "user", "-s", str(keychain_path.resolve())), runner.calls)
         self.assertNotIn("KEYCHAIN_PATH", context.env)
-        self.assertNotIn("MATCH_KEYCHAIN_NAME", context.env)
-        self.assertNotIn("MATCH_KEYCHAIN_PASSWORD", context.env)
-        self.assertTrue(any("Prepared keychain" in line for line in logs))
+        self.assertEqual("login.keychain-db", context.env["KEYCHAIN_NAME"])
+        self.assertEqual("secret", context.env["KEYCHAIN_PASSWORD"])
+        self.assertEqual("login.keychain-db", context.env["MATCH_KEYCHAIN_NAME"])
+        self.assertEqual("secret", context.env["MATCH_KEYCHAIN_PASSWORD"])
+        self.assertTrue(any("Keychain ready" in line for line in logs))
 
-    def test_prepare_ios_toolchain_tolerates_login_keychain_unlock_failure(self) -> None:
+    def test_prepare_ios_toolchain_fails_when_login_keychain_unlock_fails(self) -> None:
         runner = FakeCommandRunner()
         executor = SetupExecutor(runner)
-        logs: list[str] = []
 
         with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as home:
             keychain_dir = Path(home) / "Library" / "Keychains"
@@ -387,17 +424,19 @@ class SetupExecutorTests(unittest.TestCase):
             )
 
             with patch("pathlib.Path.home", return_value=Path(home)):
-                executor.prepare_platform_toolchain(
-                    build_id="build-keychain-fallback",
-                    platform="ios",
-                    context=context,
-                    log=logs.append,
-                )
+                with self.assertRaises(RuntimeError):
+                    executor.prepare_platform_toolchain(
+                        build_id="build-keychain-fallback",
+                        platform="ios",
+                        context=context,
+                        log=lambda _: None,
+                    )
 
-        self.assertIn(("security", "default-keychain", "-d", "user", "-s", str(keychain_path.resolve())), runner.calls)
+        self.assertNotIn(("security", "default-keychain", "-d", "user", "-s", str(keychain_path.resolve())), runner.calls)
+        self.assertEqual("login.keychain", context.env["KEYCHAIN_NAME"])
+        self.assertEqual("wrong-secret", context.env["KEYCHAIN_PASSWORD"])
         self.assertNotIn("MATCH_KEYCHAIN_NAME", context.env)
         self.assertNotIn("MATCH_KEYCHAIN_PASSWORD", context.env)
-        self.assertTrue(any("login keychain unlock failed" in line for line in logs))
 
     def test_prepare_ios_toolchain_creates_custom_keychain_when_missing(self) -> None:
         runner = FakeCommandRunner()
@@ -441,16 +480,13 @@ class SetupExecutorTests(unittest.TestCase):
                     log=logs.append,
                 )
 
-        self.assertIn(("security", "create-keychain", "-p", "secret", str(custom_keychain)), runner.calls)
-        self.assertIn((
-            "security", "set-key-partition-list",
-            "-S", "apple-tool:,apple:,codesign:",
-            "-s", "-k", "secret", str(custom_keychain),
-        ), runner.calls)
+        self.assertNotIn(("security", "create-keychain", "-p", "secret", str(custom_keychain)), runner.calls)
         self.assertNotIn("KEYCHAIN_PATH", context.env)
-        self.assertNotIn("MATCH_KEYCHAIN_NAME", context.env)
-        self.assertNotIn("MATCH_KEYCHAIN_PASSWORD", context.env)
-        self.assertTrue(any("Created keychain" in line for line in logs))
+        self.assertEqual("ppb_ci_signing.keychain-db", context.env["KEYCHAIN_NAME"])
+        self.assertEqual("secret", context.env["KEYCHAIN_PASSWORD"])
+        self.assertEqual("ppb_ci_signing.keychain-db", context.env["MATCH_KEYCHAIN_NAME"])
+        self.assertEqual("secret", context.env["MATCH_KEYCHAIN_PASSWORD"])
+        self.assertTrue(any("Fastlane match will use keychain" in line for line in logs))
 
     def test_prepare_ios_toolchain_repairs_missing_flutter_artifact_before_fastlane(self) -> None:
         runner = FakeCommandRunner()
