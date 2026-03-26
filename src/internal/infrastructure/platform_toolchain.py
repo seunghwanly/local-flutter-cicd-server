@@ -115,9 +115,11 @@ class IOSKeychainPreparer:
         Heavy validation (existence and codesigning identities) is performed
         once at server startup via ``ConfigDiagnostics.validate_keychain_on_startup``.
         This method performs the per-build runtime steps that must be refreshed
-        for each archive session: unlock, extend the auto-lock timeout, apply
-        the partition list for non-interactive codesign, register in the search
-        list, and set as default.
+        for each archive session: unlock, extend the auto-lock timeout,
+        register in the search list, and set as default.
+        For ephemeral keychains, Fastlane imports the signing identity later,
+        so applying the partition list here would fail before any private key
+        exists in the new keychain.
         """
         strategy = self._strategy(context)
         keychain_name = (context.env.get("KEYCHAIN_NAME") or "").strip()
@@ -181,21 +183,22 @@ class IOSKeychainPreparer:
                 cwd=str(cwd),
                 should_stop=should_cancel,
             )
-            self.command_runner.run_checked(
-                [
-                    "security",
-                    "set-key-partition-list",
-                    "-S",
-                    self._PARTITION_LIST_SERVICES,
-                    "-s",
-                    "-k",
-                    keychain_password,
-                    keychain_str,
-                ],
-                env=context.env,
-                cwd=str(cwd),
-                should_stop=should_cancel,
-            )
+            if strategy != "ephemeral":
+                self.command_runner.run_checked(
+                    [
+                        "security",
+                        "set-key-partition-list",
+                        "-S",
+                        self._PARTITION_LIST_SERVICES,
+                        "-s",
+                        "-k",
+                        keychain_password,
+                        keychain_str,
+                    ],
+                    env=context.env,
+                    cwd=str(cwd),
+                    should_stop=should_cancel,
+                )
 
         # Set as default keychain
         self.command_runner.run_checked(
