@@ -11,7 +11,7 @@ cp env.template .env
 그 다음 `.env` 파일을 열어서 실제 값으로 수정하세요.
 
 **참고:** 
-- `local_run.sh`는 서버 실행만 담당하고, 루트 `.env`는 앱 시작 시 자동으로 읽습니다.
+- `scripts/start.sh --foreground`는 서버 실행 전 venv와 의존성을 준비하고, 루트 `.env`는 앱 시작 시 자동으로 읽습니다.
 - 직접 서버를 실행할 경우 루트 `.env`도 자동으로 읽습니다: `./venv/bin/uvicorn src.main:app --reload`
 
 ### 방법 2: 직접 생성

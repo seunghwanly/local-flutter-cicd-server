@@ -19,14 +19,15 @@ from ..models import BuildPipelineRequestDto
 class BuildService:
     """Facade kept for existing route and webhook integrations."""
 
-    def __init__(self) -> None:
+    def __init__(self, config_diagnostics: ConfigDiagnostics | None = None) -> None:
         command_runner = CommandRunner()
+        diagnostics = config_diagnostics or ConfigDiagnostics()
         self.orchestrator = BuildOrchestrator(
             repository=BuildRepository(),
             validator=BuildRequestValidator(),
             version_resolver=VersionResolver(),
             command_runner=command_runner,
-            config_diagnostics=ConfigDiagnostics(),
+            config_diagnostics=diagnostics,
             environment_assembler=BuildEnvironmentAssembler(
                 RepositoryWorkspaceManager(command_runner)
             ),

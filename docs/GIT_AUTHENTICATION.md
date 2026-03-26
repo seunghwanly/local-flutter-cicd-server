@@ -384,8 +384,7 @@ chmod 600 ~/.git-credentials
 
 3. **서버 재시작:**
    ```bash
-   sh local_run.sh
+   ./scripts/start.sh --foreground
    ```
 
 완료! 🎉
-
