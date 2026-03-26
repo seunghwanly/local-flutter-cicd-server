@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from dataclasses import dataclass, field
+from typing import Any, Callable, Dict, Optional
 
 
 @dataclass
@@ -19,6 +19,7 @@ class BuildRuntimeContext:
     slot_key: Optional[str] = None
     slot_id: Optional[str] = None
     workspace_lease: Optional[Any] = None
+    cleanup_callbacks: list[Callable[[], None]] = field(default_factory=list)
 
     def is_shorebird_patch(self) -> bool:
         return self.trigger_source.startswith("shorebird")

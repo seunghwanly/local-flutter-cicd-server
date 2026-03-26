@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import platform
+import secrets
 import shutil
 from pathlib import Path
 from typing import Dict
@@ -88,6 +89,9 @@ class ShorebirdCacheValidator:
 class PreparedKeychain:
     path: Path
     password: str | None
+    search_list: list[str]
+    original_default_keychain: str | None
+    ephemeral: bool = False
 
     def match_name(self) -> str:
         keychain_dir = (Path.home() / "Library" / "Keychains").resolve()
@@ -110,16 +114,33 @@ class IOSKeychainPreparer:
         This method only performs the per-build runtime steps: unlock, register
         in the search list, and set as default.
         """
+        strategy = self._strategy(context)
         keychain_name = (context.env.get("KEYCHAIN_NAME") or "").strip()
         keychain_password = context.env.get("KEYCHAIN_PASSWORD")
-        if not keychain_name:
-            raise RuntimeError("KEYCHAIN_NAME is required for iOS signing environment preparation")
-
-        keychain_path = self._resolve_keychain_path(keychain_name) or self._planned_keychain_path(keychain_name)
-        if keychain_path is None:
-            raise RuntimeError(f"Configured keychain '{keychain_name}' could not be resolved")
+        if strategy == "ephemeral":
+            keychain_path, keychain_password = self._create_ephemeral_keychain(
+                build_id,
+                context,
+                cwd,
+                log,
+                should_cancel=should_cancel,
+            )
+        else:
+            if not keychain_name:
+                raise RuntimeError("KEYCHAIN_NAME is required for iOS signing environment preparation")
+            keychain_path = self._resolve_keychain_path(keychain_name) or self._planned_keychain_path(keychain_name)
+            if keychain_path is None:
+                raise RuntimeError(f"Configured keychain '{keychain_name}' could not be resolved")
 
         keychain_str = str(keychain_path)
+        default_keychain = self.command_runner.run(
+            ["security", "default-keychain", "-d", "user"],
+            env=context.env,
+            cwd=str(cwd),
+            check=False,
+            should_stop=should_cancel,
+        )
+        original_default_keychain = self._parse_default_keychain(default_keychain.stdout)
 
         # Ensure keychain is in the search list
         existing = self.command_runner.run(
@@ -157,7 +178,13 @@ class IOSKeychainPreparer:
         )
         log(f"[{build_id}] 🔐 Keychain ready: {keychain_path.name}")
         normalized_password = keychain_password.strip() if isinstance(keychain_password, str) else keychain_password
-        return PreparedKeychain(path=keychain_path, password=normalized_password or None)
+        return PreparedKeychain(
+            path=keychain_path,
+            password=normalized_password or None,
+            search_list=search_list,
+            original_default_keychain=original_default_keychain,
+            ephemeral=(strategy == "ephemeral"),
+        )
 
     def _resolve_keychain_path(self, keychain_name: str) -> Path | None:
         provided = Path(keychain_name).expanduser()
@@ -203,9 +230,49 @@ class IOSKeychainPreparer:
                 parsed.append(str(Path(stripped).expanduser()))
         return parsed
 
+    def _parse_default_keychain(self, output: str) -> str | None:
+        for line in output.splitlines():
+            stripped = line.strip().strip('"')
+            if stripped:
+                return str(Path(stripped).expanduser())
+        return None
+
     def _is_login_keychain(self, keychain_path: Path) -> bool:
         name = keychain_path.name
         return name in {"login.keychain", "login.keychain-db"}
+
+    def _strategy(self, context: BuildRuntimeContext) -> str:
+        configured = (context.env.get("IOS_KEYCHAIN_STRATEGY") or "").strip().lower()
+        if configured in {"configured", "ephemeral"}:
+            return configured
+        return "configured" if (context.env.get("KEYCHAIN_NAME") or "").strip() else "ephemeral"
+
+    def _create_ephemeral_keychain(
+        self,
+        build_id: str,
+        context: BuildRuntimeContext,
+        cwd: Path,
+        log,
+        should_cancel=None,
+    ) -> tuple[Path, str]:
+        keychain_dir = Path(context.workspace) / "keychains"
+        keychain_dir.mkdir(parents=True, exist_ok=True)
+        keychain_path = (keychain_dir / f"{build_id}.keychain-db").resolve()
+        keychain_password = secrets.token_urlsafe(24)
+        self.command_runner.run_checked(
+            ["security", "create-keychain", "-p", keychain_password, str(keychain_path)],
+            env=context.env,
+            cwd=str(cwd),
+            should_stop=should_cancel,
+        )
+        self.command_runner.run_checked(
+            ["security", "set-keychain-settings", "-lut", "21600", str(keychain_path)],
+            env=context.env,
+            cwd=str(cwd),
+            should_stop=should_cancel,
+        )
+        log(f"[{build_id}] 🔐 Created ephemeral keychain: {keychain_path.name}")
+        return keychain_path, keychain_password
 
 
 class PlatformToolchainPreparer:
@@ -276,6 +343,7 @@ class PlatformToolchainPreparer:
             should_cancel=should_cancel,
         )
         self._configure_fastlane_keychain_env(build_id, context, prepared_keychain, log)
+        self._register_keychain_cleanup(build_id, context, ios_dir, prepared_keychain, log)
         self._prepare_flutter_ios_artifacts(build_id, context, ios_dir, log, should_cancel=should_cancel)
         self._plan_ios_pod_install(build_id, context, ios_dir, log)
         self.ruby_toolchain.configure_environment(ios_dir, context.env, build_id, log, should_cancel=should_cancel)
@@ -310,18 +378,20 @@ class PlatformToolchainPreparer:
         self.ruby_toolchain.install_fastlane_plugins(ios_dir, context.env, build_id, log, should_cancel=should_cancel)
 
     def _validate_ios_runtime_requirements(self, build_id: str, context: BuildRuntimeContext, log) -> None:
-        keychain_name = (context.env.get("KEYCHAIN_NAME") or "").strip()
-        if not keychain_name:
-            raise RuntimeError("KEYCHAIN_NAME is required for iOS builds")
+        strategy = self.ios_keychain._strategy(context)
+        if strategy == "configured":
+            keychain_name = (context.env.get("KEYCHAIN_NAME") or "").strip()
+            if not keychain_name:
+                raise RuntimeError("KEYCHAIN_NAME is required for iOS builds")
 
-        keychain_password = context.env.get("KEYCHAIN_PASSWORD", "").strip()
-        keychain_path = (
-            self.ios_keychain._resolve_keychain_path(keychain_name)
-            or self.ios_keychain._planned_keychain_path(keychain_name)
-        )
-        is_login_keychain = bool(keychain_path and self.ios_keychain._is_login_keychain(keychain_path))
-        if not is_login_keychain and not keychain_password:
-            raise RuntimeError("KEYCHAIN_PASSWORD is required when KEYCHAIN_NAME points to a custom keychain")
+            keychain_password = context.env.get("KEYCHAIN_PASSWORD", "").strip()
+            keychain_path = (
+                self.ios_keychain._resolve_keychain_path(keychain_name)
+                or self.ios_keychain._planned_keychain_path(keychain_name)
+            )
+            is_login_keychain = bool(keychain_path and self.ios_keychain._is_login_keychain(keychain_path))
+            if not is_login_keychain and not keychain_password:
+                raise RuntimeError("KEYCHAIN_PASSWORD is required when KEYCHAIN_NAME points to a custom keychain")
 
         match_password = (context.env.get("MATCH_PASSWORD") or "").strip()
         if not match_password:
@@ -368,6 +438,42 @@ class PlatformToolchainPreparer:
             f"[{build_id}] ⚠️ Fastlane match keychain password is unavailable for "
             f"{context.env['MATCH_KEYCHAIN_NAME']}; the Fastfile must tolerate an existing session"
         )
+
+    def _register_keychain_cleanup(
+        self,
+        build_id: str,
+        context: BuildRuntimeContext,
+        cwd: Path,
+        prepared_keychain: PreparedKeychain,
+        log,
+    ) -> None:
+        if not prepared_keychain.ephemeral:
+            return
+
+        def cleanup() -> None:
+            if prepared_keychain.original_default_keychain:
+                self.command_runner.run(
+                    ["security", "default-keychain", "-d", "user", "-s", prepared_keychain.original_default_keychain],
+                    env=context.env,
+                    cwd=str(cwd),
+                    check=False,
+                )
+            if prepared_keychain.search_list:
+                self.command_runner.run(
+                    ["security", "list-keychains", "-d", "user", "-s", *prepared_keychain.search_list],
+                    env=context.env,
+                    cwd=str(cwd),
+                    check=False,
+                )
+            self.command_runner.run(
+                ["security", "delete-keychain", str(prepared_keychain.path)],
+                env=context.env,
+                cwd=str(cwd),
+                check=False,
+            )
+            log(f"[{build_id}] 🧹 Removed ephemeral keychain: {prepared_keychain.path.name}")
+
+        context.cleanup_callbacks.append(cleanup)
 
     def _prepare_flutter_ios_artifacts(
         self,

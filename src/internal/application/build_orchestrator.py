@@ -164,6 +164,12 @@ class BuildOrchestrator:
             logger.exception("Build pipeline failed for %s", job.build_id)
             self.repository.save(job)
         finally:
+            if runtime:
+                for cleanup in reversed(runtime.cleanup_callbacks):
+                    try:
+                        cleanup()
+                    except Exception as exc:
+                        self._log(job, f"[{job.build_id}] ⚠️ Runtime cleanup failed: {exc}")
             if runtime and runtime.workspace_lease is not None:
                 runtime.workspace_lease.release()
                 self._log(job, f"[{job.build_id}] 🔓 Workspace slot released: {runtime.slot_key}/{runtime.slot_id}")
