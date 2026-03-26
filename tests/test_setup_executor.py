@@ -76,6 +76,7 @@ def register_login_keychain(
         runner.add_response(
             ["security", "list-keychains", "-d", "user", "-s", "/tmp/other.keychain-db", str(keychain_path.resolve())]
         )
+    runner.add_response(["security", "default-keychain", "-d", "user"], stdout=f"    \"{keychain_path.resolve()}\"\n")
     runner.add_response(["security", "unlock-keychain", "-p", password, str(keychain_path.resolve())])
     runner.add_response([
         "security", "set-key-partition-list",
@@ -212,6 +213,7 @@ class SetupExecutorTests(unittest.TestCase):
         self.assertEqual("/tmp/gems/ruby-3.2.0", context.env["GEM_HOME"])
         self.assertEqual("/tmp/gems/ruby-3.2.0/bundle", context.env["BUNDLE_PATH"])
         self.assertEqual("true", context.env["IOS_SHOULD_RUN_POD_INSTALL"])
+        self.assertEqual(0, len(context.cleanup_callbacks))
 
     def test_prepare_ios_toolchain_exports_fastlane_match_keychain_env(self) -> None:
         runner = FakeCommandRunner()
@@ -248,6 +250,7 @@ class SetupExecutorTests(unittest.TestCase):
         self.assertEqual("secret", context.env["MATCH_KEYCHAIN_PASSWORD"])
         self.assertEqual(keychain_path.name, context.env["KEYCHAIN_NAME"])
         self.assertEqual("secret", context.env["KEYCHAIN_PASSWORD"])
+        self.assertEqual(0, len(context.cleanup_callbacks))
         self.assertTrue(any("Fastlane match will use keychain" in line for line in logs))
 
     def test_prepare_ios_toolchain_prepares_standalone_fastlane_for_shorebird_patch(self) -> None:
@@ -450,7 +453,7 @@ class SetupExecutorTests(unittest.TestCase):
             create_flutter_ios_artifact(repo_dir)
 
             custom_keychain = Path(home) / "Library" / "Keychains" / "ppb_ci_signing.keychain-db"
-            runner.add_response(["security", "create-keychain", "-p", "secret", str(custom_keychain)])
+            runner.add_response(["security", "default-keychain", "-d", "user"], stdout="    \"/tmp/original.keychain-db\"\n")
             runner.add_response(["security", "list-keychains", "-d", "user"], stdout="")
             runner.add_response(["security", "list-keychains", "-d", "user", "-s", str(custom_keychain)])
             runner.add_response(["security", "unlock-keychain", "-p", "secret", str(custom_keychain)])
@@ -487,6 +490,46 @@ class SetupExecutorTests(unittest.TestCase):
         self.assertEqual("ppb_ci_signing.keychain-db", context.env["MATCH_KEYCHAIN_NAME"])
         self.assertEqual("secret", context.env["MATCH_KEYCHAIN_PASSWORD"])
         self.assertTrue(any("Fastlane match will use keychain" in line for line in logs))
+
+    def test_prepare_ios_toolchain_creates_ephemeral_keychain_when_name_missing(self) -> None:
+        runner = FakeCommandRunner()
+        executor = SetupExecutor(runner)
+        logs: list[str] = []
+
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_dir = Path(tmp) / "repo"
+            ios_dir = repo_dir / "ios"
+            ios_dir.mkdir(parents=True)
+            create_flutter_ios_artifact(repo_dir)
+            ephemeral_path = (Path(tmp) / "keychains" / "build-ephemeral.keychain-db").resolve()
+            runner.add_response(["security", "default-keychain", "-d", "user"], stdout="    \"/tmp/original.keychain-db\"\n")
+            runner.add_response(["security", "set-keychain-settings", "-lut", "21600", str(ephemeral_path)])
+            runner.add_response(["security", "list-keychains", "-d", "user"], stdout="    \"/tmp/original.keychain-db\"\n")
+            runner.add_response(["security", "list-keychains", "-d", "user", "-s", "/tmp/original.keychain-db", str(ephemeral_path)])
+            runner.add_response(["security", "default-keychain", "-d", "user", "-s", str(ephemeral_path)])
+            runner.add_response(["rbenv", "versions", "--bare"], stdout="3.2.0\n")
+            runner.add_response(["ruby", "-e", "print RUBY_VERSION"], stdout="3.2.0")
+            runner.add_response(["gem", "list", "-i", "cocoapods"], returncode=0)
+            runner.add_response(["gem", "list", "-i", "fastlane"], returncode=0)
+
+            context = BuildRuntimeContext(
+                env=default_ios_env(KEYCHAIN_NAME="", KEYCHAIN_PASSWORD=""),
+                repo_dir=str(repo_dir),
+                workspace=tmp,
+            )
+            executor.prepare_platform_toolchain(
+                build_id="build-ephemeral",
+                platform="ios",
+                context=context,
+                log=logs.append,
+            )
+
+        self.assertEqual(str(ephemeral_path), context.env["KEYCHAIN_NAME"])
+        self.assertEqual(str(ephemeral_path), context.env["MATCH_KEYCHAIN_NAME"])
+        self.assertTrue(context.env["KEYCHAIN_PASSWORD"])
+        self.assertTrue(context.env["MATCH_KEYCHAIN_PASSWORD"])
+        self.assertEqual(1, len(context.cleanup_callbacks))
+        self.assertTrue(any("Created ephemeral keychain" in line for line in logs))
 
     def test_prepare_ios_toolchain_repairs_missing_flutter_artifact_before_fastlane(self) -> None:
         runner = FakeCommandRunner()

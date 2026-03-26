@@ -101,6 +101,47 @@ class BuildOrchestratorTests(unittest.TestCase):
         self.assertEqual("2.2.1", started_env["BUILD_NAME"])
         self.assertEqual("693", started_env["BUILD_NUMBER"])
 
+    def test_run_pipeline_executes_runtime_cleanup_callbacks(self) -> None:
+        repository = StubRepository()
+        command_runner = CapturingCommandRunner()
+        cleanup_calls: list[str] = []
+
+        class StubVersionResolver:
+            def resolve(self, request):
+                return request
+
+        class StubEnvironmentAssembler:
+            def assemble(self, job, versions, log, should_cancel=None):
+                runtime = BuildRuntimeContext(
+                    env={},
+                    repo_dir="/tmp/repo",
+                    workspace="/tmp/workspace",
+                )
+                runtime.cleanup_callbacks.append(lambda: cleanup_calls.append(job.build_id))
+                return runtime
+
+        orchestrator = BuildOrchestrator(
+            repository=repository,
+            validator=None,
+            version_resolver=StubVersionResolver(),
+            command_runner=command_runner,
+            config_diagnostics=None,
+            environment_assembler=StubEnvironmentAssembler(),
+            setup_executor=StubSetupExecutor(),
+            status_presenter=None,
+        )
+
+        request = BuildRequestData(
+            flavor="dev",
+            platform="ios",
+            branch_name="develop",
+        )
+        job = BuildJob.create("build-cleanup", request, "develop", "queue-cleanup")
+
+        orchestrator._run_pipeline(job, request)
+
+        self.assertEqual(["build-cleanup"], cleanup_calls)
+
 
 if __name__ == "__main__":
     unittest.main()

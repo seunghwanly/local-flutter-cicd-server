@@ -32,7 +32,6 @@ class ConfigDiagnostics:
 
     IOS_BUILD_VARS = [
         "MATCH_PASSWORD",
-        "KEYCHAIN_NAME",
     ]
 
     def __init__(self) -> None:
@@ -64,6 +63,8 @@ class ConfigDiagnostics:
 
         if request.platform in {"all", "ios"}:
             required.extend(self.IOS_BUILD_VARS)
+            if self._keychain_strategy() == "configured":
+                required.append("KEYCHAIN_NAME")
 
         missing = self._find_missing(required)
 
@@ -144,6 +145,12 @@ class ConfigDiagnostics:
         """Validate macOS keychain readiness for iOS codesigning."""
         missing: List[str] = []
         details: Dict[str, str] = {}
+        strategy = self._keychain_strategy()
+        details["strategy"] = strategy
+
+        if strategy == "ephemeral":
+            details["keychain_name"] = "generated per build"
+            return DiagnosticResult(feature="keychain", ready=True, missing=missing, details=details)
 
         keychain_name = (os.environ.get("KEYCHAIN_NAME") or "").strip()
         keychain_password = os.environ.get("KEYCHAIN_PASSWORD", "")
@@ -230,8 +237,7 @@ class ConfigDiagnostics:
             "github_action": self.get_github_action_diagnostics(),
             "shorebird_action": self.get_shorebird_action_diagnostics(),
         }
-        keychain_name = (os.environ.get("KEYCHAIN_NAME") or "").strip()
-        if keychain_name:
+        if self._keychain_strategy() in {"configured", "ephemeral"}:
             results["keychain"] = self.get_keychain_diagnostics()
         return results
 
@@ -254,3 +260,9 @@ class ConfigDiagnostics:
 
     def _find_missing(self, keys: List[str]) -> List[str]:
         return [key for key in keys if not os.environ.get(key)]
+
+    def _keychain_strategy(self) -> str:
+        configured = (os.environ.get("IOS_KEYCHAIN_STRATEGY") or "").strip().lower()
+        if configured in {"configured", "ephemeral"}:
+            return configured
+        return "configured" if (os.environ.get("KEYCHAIN_NAME") or "").strip() else "ephemeral"
