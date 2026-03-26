@@ -350,8 +350,11 @@ class PlatformToolchainPreparer:
         prepared_keychain: PreparedKeychain,
         log,
     ) -> None:
-        context.env["MATCH_KEYCHAIN_NAME"] = prepared_keychain.match_name()
+        match_keychain_name = prepared_keychain.match_name()
+        context.env["KEYCHAIN_NAME"] = match_keychain_name
+        context.env["MATCH_KEYCHAIN_NAME"] = match_keychain_name
         if prepared_keychain.password:
+            context.env["KEYCHAIN_PASSWORD"] = prepared_keychain.password
             context.env["MATCH_KEYCHAIN_PASSWORD"] = prepared_keychain.password
             log(
                 f"[{build_id}] 🔐 Fastlane match will use keychain "
@@ -359,6 +362,7 @@ class PlatformToolchainPreparer:
             )
             return
 
+        context.env.pop("KEYCHAIN_PASSWORD", None)
         context.env.pop("MATCH_KEYCHAIN_PASSWORD", None)
         log(
             f"[{build_id}] ⚠️ Fastlane match keychain password is unavailable for "

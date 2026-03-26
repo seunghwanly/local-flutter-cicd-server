@@ -205,6 +205,8 @@ class SetupExecutorTests(unittest.TestCase):
         self.assertIn(("bundle", "_2.7.2_", "config", "set", "--local", "path", "/tmp/gems/ruby-3.2.0/bundle"), runner.calls)
         self.assertIn(("bundle", "_2.7.2_", "install"), runner.calls)
         self.assertTrue(any("Installing Ruby bundle" in line for line in logs))
+        self.assertEqual("login.keychain-db", context.env["KEYCHAIN_NAME"])
+        self.assertEqual("secret", context.env["KEYCHAIN_PASSWORD"])
         self.assertEqual("login.keychain-db", context.env["MATCH_KEYCHAIN_NAME"])
         self.assertEqual("secret", context.env["MATCH_KEYCHAIN_PASSWORD"])
         self.assertEqual("/tmp/gems/ruby-3.2.0", context.env["GEM_HOME"])
@@ -244,6 +246,8 @@ class SetupExecutorTests(unittest.TestCase):
 
         self.assertEqual(keychain_path.name, context.env["MATCH_KEYCHAIN_NAME"])
         self.assertEqual("secret", context.env["MATCH_KEYCHAIN_PASSWORD"])
+        self.assertEqual(keychain_path.name, context.env["KEYCHAIN_NAME"])
+        self.assertEqual("secret", context.env["KEYCHAIN_PASSWORD"])
         self.assertTrue(any("Fastlane match will use keychain" in line for line in logs))
 
     def test_prepare_ios_toolchain_prepares_standalone_fastlane_for_shorebird_patch(self) -> None:
@@ -378,6 +382,8 @@ class SetupExecutorTests(unittest.TestCase):
         self.assertIn(("security", "unlock-keychain", "-p", "secret", str(keychain_path.resolve())), runner.calls)
         self.assertIn(("security", "default-keychain", "-d", "user", "-s", str(keychain_path.resolve())), runner.calls)
         self.assertNotIn("KEYCHAIN_PATH", context.env)
+        self.assertEqual("login.keychain-db", context.env["KEYCHAIN_NAME"])
+        self.assertEqual("secret", context.env["KEYCHAIN_PASSWORD"])
         self.assertEqual("login.keychain-db", context.env["MATCH_KEYCHAIN_NAME"])
         self.assertEqual("secret", context.env["MATCH_KEYCHAIN_PASSWORD"])
         self.assertTrue(any("Keychain ready" in line for line in logs))
@@ -427,6 +433,8 @@ class SetupExecutorTests(unittest.TestCase):
                     )
 
         self.assertNotIn(("security", "default-keychain", "-d", "user", "-s", str(keychain_path.resolve())), runner.calls)
+        self.assertEqual("login.keychain", context.env["KEYCHAIN_NAME"])
+        self.assertEqual("wrong-secret", context.env["KEYCHAIN_PASSWORD"])
         self.assertNotIn("MATCH_KEYCHAIN_NAME", context.env)
         self.assertNotIn("MATCH_KEYCHAIN_PASSWORD", context.env)
 
@@ -474,6 +482,8 @@ class SetupExecutorTests(unittest.TestCase):
 
         self.assertNotIn(("security", "create-keychain", "-p", "secret", str(custom_keychain)), runner.calls)
         self.assertNotIn("KEYCHAIN_PATH", context.env)
+        self.assertEqual("ppb_ci_signing.keychain-db", context.env["KEYCHAIN_NAME"])
+        self.assertEqual("secret", context.env["KEYCHAIN_PASSWORD"])
         self.assertEqual("ppb_ci_signing.keychain-db", context.env["MATCH_KEYCHAIN_NAME"])
         self.assertEqual("secret", context.env["MATCH_KEYCHAIN_PASSWORD"])
         self.assertTrue(any("Fastlane match will use keychain" in line for line in logs))
