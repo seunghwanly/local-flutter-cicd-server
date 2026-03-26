@@ -574,6 +574,20 @@ class SetupExecutorTests(unittest.TestCase):
         self.assertEqual(str(ephemeral_path), context.env["MATCH_KEYCHAIN_NAME"])
         self.assertTrue(context.env["KEYCHAIN_PASSWORD"])
         self.assertTrue(context.env["MATCH_KEYCHAIN_PASSWORD"])
+        self.assertIn(("security", "unlock-keychain", "-p", context.env["KEYCHAIN_PASSWORD"], str(ephemeral_path)), runner.calls)
+        self.assertNotIn(
+            (
+                "security",
+                "set-key-partition-list",
+                "-S",
+                "apple-tool:,apple:,codesign:",
+                "-s",
+                "-k",
+                context.env["KEYCHAIN_PASSWORD"],
+                str(ephemeral_path),
+            ),
+            runner.calls,
+        )
         self.assertEqual(1, len(context.cleanup_callbacks))
         self.assertTrue(any("Created ephemeral keychain" in line for line in logs))
 
