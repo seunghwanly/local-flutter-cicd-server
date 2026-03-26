@@ -49,6 +49,8 @@ class ConfigDiagnostics:
     @property
     def keychain_ready(self) -> bool:
         """Whether the keychain was validated successfully at startup."""
+        if self._keychain_strategy() == "ephemeral":
+            return True
         return self._keychain_result is not None and self._keychain_result.ready
 
     def get_build_diagnostics(self, request: BuildRequestData) -> DiagnosticResult:

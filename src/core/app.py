@@ -45,11 +45,6 @@ def _log_startup_details(settings: AppSettings, diagnostics: ConfigDiagnostics) 
 
 
 def _validate_keychain_at_startup(diagnostics: ConfigDiagnostics) -> None:
-    keychain_name = (os.environ.get("KEYCHAIN_NAME") or "").strip()
-    if not keychain_name:
-        logger.info("KEYCHAIN_NAME not set — keychain validation skipped (iOS builds will be rejected)")
-        return
-
     result = diagnostics.validate_keychain_on_startup()
     for key, value in result.details.items():
         logger.info("Keychain %s: %s", key, value)
