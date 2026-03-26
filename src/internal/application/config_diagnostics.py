@@ -186,12 +186,10 @@ class ConfigDiagnostics:
                 details["unlock"] = "ok"
             else:
                 details["unlock"] = f"failed (exit {result.returncode})"
-                if not is_login:
-                    missing.append("keychain unlock failed with KEYCHAIN_PASSWORD")
-        elif is_login:
-            details["unlock"] = "skipped (no KEYCHAIN_PASSWORD; relies on user session)"
+                missing.append("keychain unlock failed with KEYCHAIN_PASSWORD")
         else:
-            missing.append("KEYCHAIN_PASSWORD (required for non-login keychain)")
+            details["unlock"] = "skipped (missing KEYCHAIN_PASSWORD)"
+            missing.append("KEYCHAIN_PASSWORD (required for configured keychain)")
 
         # --- partition list test ---
         if unlock_ok and keychain_password:
